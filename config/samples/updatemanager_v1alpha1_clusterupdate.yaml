@@ -1,0 +1,12 @@
+apiVersion: updatemanager.onesi.de/v1alpha1
+kind: ClusterUpdate
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterupdate
+    app.kubernetes.io/instance: clusterupdate-sample
+    app.kubernetes.io/part-of: updatecontroller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: updatecontroller
+  name: clusterupdate-sample
+spec:
+  # TODO(user): Add fields here

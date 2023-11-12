@@ -1,0 +1,12 @@
+apiVersion: updatemanager.onesi.de/v1alpha1
+kind: NodeUpdate
+metadata:
+  labels:
+    app.kubernetes.io/name: nodeupdate
+    app.kubernetes.io/instance: nodeupdate-sample
+    app.kubernetes.io/part-of: updatecontroller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: updatecontroller
+  name: nodeupdate-sample
+spec:
+  # TODO(user): Add fields here

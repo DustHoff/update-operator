@@ -1,0 +1,59 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - clusterupdates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - clusterupdates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - clusterupdates/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - nodeupdates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - nodeupdates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - nodeupdates/status
+  verbs:
+  - get
+  - patch
+  - update

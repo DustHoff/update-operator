@@ -1,0 +1,27 @@
+# permissions for end users to view clusterupdates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: clusterupdate-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: updatecontroller
+    app.kubernetes.io/part-of: updatecontroller
+    app.kubernetes.io/managed-by: kustomize
+  name: clusterupdate-viewer-role
+rules:
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - clusterupdates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - clusterupdates/status
+  verbs:
+  - get

@@ -1,0 +1,5 @@
+## Append samples you want in your CSV to this file as resources ##
+resources:
+- updatemanager_v1alpha1_nodeupdate.yaml
+- updatemanager_v1alpha1_clusterupdate.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples
