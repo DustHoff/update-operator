@@ -1,0 +1,53 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: updatecontroller.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: ClusterUpdate is the Schema for the clusterupdates API
+      displayName: Cluster Update
+      kind: ClusterUpdate
+      name: clusterupdates.updatemanager.onesi.de
+      version: v1alpha1
+    - description: NodeUpdate is the Schema for the nodeupdates API
+      displayName: Node Update
+      kind: NodeUpdate
+      name: nodeupdates.updatemanager.onesi.de
+      version: v1alpha1
+  description: Manage Cluster and Node Updates
+  displayName: UpdateController
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - update
+  links:
+  - name: Updatecontroller
+    url: https://updatecontroller.domain
+  maintainers:
+  - email: dustinh@onesi.de
+    name: dusthoff
+  maturity: alpha
+  provider:
+    name: Dustin Hoffmann
+    url: https://github.com/DustHoff
+  version: 0.0.0

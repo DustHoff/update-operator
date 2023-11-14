@@ -27,7 +27,7 @@ import (
 	updatemanagerv1alpha1 "github.com/DustHoff/update-operator/api/v1alpha1"
 )
 
-// ClusterUpdateReconciler reconciles a ClusterUpdate object
+// NodeReconciler reconciles a ClusterUpdate object
 type ClusterUpdateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

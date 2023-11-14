@@ -29,13 +29,15 @@ type NodeUpdateSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of NodeUpdate. Edit nodeupdate_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Image    string `json:"image,omitempty"`
+	Schedule string `json:"schedule,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Priority int32  `json:"priority,omitempty"`
 }
 
 // NodeUpdateStatus defines the observed state of NodeUpdate
 type NodeUpdateStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 //+kubebuilder:object:root=true

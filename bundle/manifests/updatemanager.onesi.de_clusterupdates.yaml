@@ -1,24 +1,23 @@
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.11.1
   creationTimestamp: null
-  name: nodeupdates.updatemanager.onesi.de
+  name: clusterupdates.updatemanager.onesi.de
 spec:
   group: updatemanager.onesi.de
   names:
-    kind: NodeUpdate
-    listKind: NodeUpdateList
-    plural: nodeupdates
-    singular: nodeupdate
+    kind: ClusterUpdate
+    listKind: ClusterUpdateList
+    plural: clusterupdates
+    singular: clusterupdate
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: NodeUpdate is the Schema for the nodeupdates API
+        description: ClusterUpdate is the Schema for the clusterupdates API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -33,22 +32,15 @@ spec:
           metadata:
             type: object
           spec:
-            description: NodeUpdateSpec defines the desired state of NodeUpdate
+            description: ClusterUpdateSpec defines the desired state of ClusterUpdate
             properties:
-              image:
-                description: Foo is an example field of NodeUpdate. Edit nodeupdate_types.go
+              version:
+                description: Foo is an example field of ClusterUpdate. Edit clusterupdate_types.go
                   to remove/update
-                type: string
-              priority:
-                format: int32
-                type: integer
-              role:
-                type: string
-              schedule:
                 type: string
             type: object
           status:
-            description: NodeUpdateStatus defines the observed state of NodeUpdate
+            description: ClusterUpdateStatus defines the observed state of ClusterUpdate
             properties:
               conditions:
                 items:
@@ -124,3 +116,9 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null
