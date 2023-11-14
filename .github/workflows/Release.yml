@@ -32,8 +32,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images:
-           - ghcr.io/dusthoff/updatecontroller/operator
+          images: ghcr.io/dusthoff/updatecontroller/operator
       - name: Build and push operator
         uses: docker/build-push-action@v5
         with:
@@ -49,8 +48,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images:
-            - ghcr.io/dusthoff/updatecontroller/operator-bundle
+          images: ghcr.io/dusthoff/updatecontroller/operator-bundle
       - name: Build and push operator
         uses: docker/build-push-action@v5
         with:
