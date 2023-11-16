@@ -9,6 +9,7 @@ jobs:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@v4
       - name: Login to DockerHub
         uses: docker/login-action@v2
         with:
@@ -49,7 +50,6 @@ jobs:
             linux/amd64
           tags: ${{ steps.meta-bundle.outputs.tags }}
           labels: ${{ steps.meta-bundle.outputs.labels }}
-      - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
           go-version: '^1.20'
