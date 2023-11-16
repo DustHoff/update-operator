@@ -17,12 +17,16 @@ limitations under the License.
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"time"
 
@@ -36,8 +40,8 @@ import (
 )
 
 const (
-	// typeAvailable Memcached represents the status of the Deployment reconciliation
-	typeAvailable = "Available"
+	// typeFailed represents the status of a failed node update
+	typeFailed = "Failed"
 	// typeProcessing represents the status of progressing updates of the given Node
 	typeProcessing = "Processing"
 	// typeWaiting represents the status of a managed state of the update process
@@ -84,16 +88,12 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 	if nodeUpdate.Status.Conditions == nil || len(nodeUpdate.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
 		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
-			log.Error(err, "Failed to update Memcached status")
+			log.Error(err, "Failed to update node update status")
 			return ctrl.Result{}, err
 		}
-		// Let's re-fetch the memcached Custom Resource after update the status
-		// so that we have the latest state of the resource on the cluster and we will avoid
-		// raise the issue "the object has been modified, please apply
-		// your changes to the latest version and try again" which would re-trigger the reconciliation
-		// if we try to update it again in the following operations
+
 		if err := r.Get(ctx, req.NamespacedName, nodeUpdate); err != nil {
 			log.Error(err, "Failed to re-fetch node update")
 			return ctrl.Result{}, err
@@ -166,31 +166,69 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			log.Error(err, "Failed to define new Pod resource for Node Update")
 
 			// The following implementation will update the status
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable,
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", nodeUpdate.Name, err)})
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+				Status: metav1.ConditionTrue, Reason: "Reconciling",
+				Message: fmt.Sprintf("Failed to create pod for the custom resource (%s): (%s)", nodeUpdate.Name, err)})
 
 			if err := r.Status().Update(ctx, nodeUpdate); err != nil {
-				log.Error(err, "Failed to update Memcached status")
+				log.Error(err, "Failed to update node update status")
 				return ctrl.Result{}, err
 			}
 
 			return ctrl.Result{}, err
 		}
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+			Status: metav1.ConditionTrue, Reason: "Reconciling",
+			Message: "Starting update procedure"})
+		if err := r.Status().Update(ctx, nodeUpdate); err != nil {
+			log.Error(err, "Failed to update node update status")
+			return ctrl.Result{}, err
+		}
 		log.Info("Creating a new POD",
-			"Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+			"Namespace", dep.Namespace, "Name", dep.Name)
 		if err = r.Create(ctx, pod); err != nil {
 			log.Error(err, "Failed to create new POD",
 				"Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 			return ctrl.Result{}, err
 		}
 
-		// Deployment created successfully
+		// POD created successfully
 		// We will requeue the reconciliation so that we can ensure the state
 		// and move forward for the next operations
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+	log.Info("update pod for node " + nodeUpdate.Name + " is in " + string(pod.Status.Phase))
+	switch pod.Status.Phase {
+	case "Pending":
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+			Status: metav1.ConditionTrue, Reason: "prepare for update", Message: "POD is in pending state"})
+	case "Running":
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+			Status: metav1.ConditionTrue, Reason: "update in process", Message: "POD is in running state"})
+	case "Succeeded":
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
+			Status: metav1.ConditionTrue, Reason: "update has been succeeded", Message: r.fetchPodLogs(ctx, pod)})
+		if err = r.Delete(ctx, pod); err != nil {
+			log.Error(err, "Failed to cleanup update pod")
+			return ctrl.Result{}, err
+		}
+	case "Failed":
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
+			Status: metav1.ConditionTrue, Reason: "update has been failed", Message: r.fetchPodLogs(ctx, pod)})
+		if err = r.Delete(ctx, pod); err != nil {
+			log.Error(err, "Failed to cleanup update pod")
+			return ctrl.Result{}, err
+		}
+	default:
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+			Status: metav1.ConditionFalse, Reason: "unknown", Message: "POD is in unknown state"})
+
+	}
+	if err = r.Status().Update(ctx, nodeUpdate); err != nil {
+		return ctrl.Result{}, err
 	}
 
+	//https://stackoverflow.com/questions/53852530/how-to-get-logs-from-kubernetes-using-go
 	return ctrl.Result{}, nil
 }
 
@@ -201,6 +239,32 @@ func (r *NodeUpdateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod) string {
+	podLogOpts := corev1.PodLogOptions{}
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return "error in getting config"
+	}
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "error in getting access to K8S"
+	}
+	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
+	podLogs, err := req.Stream(ctx)
+	if err != nil {
+		return "error in opening stream"
+	}
+	defer podLogs.Close()
+
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, podLogs)
+	if err != nil {
+		return "error in copy information from podLogs to buf"
+	}
+	str := buf.String()
+	return str
+}
 func (r *NodeUpdateReconciler) createSchedule(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
