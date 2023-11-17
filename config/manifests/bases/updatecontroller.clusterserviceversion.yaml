@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-  name: updatecontroller.v0.0.0
+  name: update-controller.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -30,19 +30,16 @@ spec:
       deployments: null
     strategy: ""
   installModes:
-  - supported: false
+  - supported: true
     type: OwnNamespace
-  - supported: false
+  - supported: true
     type: SingleNamespace
   - supported: false
     type: MultiNamespace
-  - supported: true
+  - supported: false
     type: AllNamespaces
   keywords:
   - update
-  links:
-  - name: Updatecontroller
-    url: https://updatecontroller.domain
   maintainers:
   - email: dustinh@onesi.de
     name: dusthoff
