@@ -1,0 +1,4 @@
+---
+defaultChannel: stable
+name: update-operator
+schema: olm.package
