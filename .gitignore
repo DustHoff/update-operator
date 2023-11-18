@@ -5,7 +5,9 @@
 *.dll
 *.so
 *.dylib
-bin
+bin/controller-gen
+bin/kustomize
+bin/operator-sdk
 testbin/*
 bundle/**
 Dockerfile.cross
