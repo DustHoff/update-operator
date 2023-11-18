@@ -5,6 +5,10 @@ metadata:
   namespace: operators
 spec:
   channel: stable
+  config:
+    env:
+      - name: WATCH_NAMESPACE
+        value: update
   name: updatecontroller
   source: dusthoff
   sourceNamespace: olm
