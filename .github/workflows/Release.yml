@@ -64,7 +64,7 @@ jobs:
             echo "  - name: updatecontroller.v$tag" >> catalog/operator.yaml
             if [ ${#pre} -gt 0 ]
             then
-              echo "  - replaces: updatecontroller.v$pre" >> catalog/operator.yaml
+              echo "    replaces: updatecontroller.v$pre" >> catalog/operator.yaml
             fi
             pre=$tag
           done
