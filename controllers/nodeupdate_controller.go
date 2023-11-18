@@ -60,7 +60,8 @@ type NodeUpdateReconciler struct {
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates/finalizers,verbs=update
-//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=v1,resources=Pod,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=v1,resources=Pod/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -87,6 +88,7 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Error(err, "Failed to get NodeUpdate")
 		return ctrl.Result{}, err
 	}
+	log.Info("checking node update " + nodeUpdate.Name)
 	if nodeUpdate.Status.Conditions == nil || len(nodeUpdate.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
 		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
@@ -118,14 +120,14 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// indicated by the deletion timestamp being set.
 	if nodeUpdate.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(nodeUpdate, finalizer) {
-			log.Info("Performing Finalizer Operations for Memcached before delete CR")
+			log.Info("Performing Finalizer Operations for node update before delete CR")
 
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeStopped,
 				Status: metav1.ConditionUnknown, Reason: "Finalizing",
 				Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", nodeUpdate.Name)})
 
 			if err := r.Status().Update(ctx, nodeUpdate); err != nil {
-				log.Error(err, "Failed to update Memcached status")
+				log.Error(err, "Failed to update node update status")
 				return ctrl.Result{}, err
 			}
 
@@ -272,12 +274,20 @@ func (r *NodeUpdateReconciler) createSchedule(update *updatemanagerv1alpha1.Node
 			Namespace: update.Namespace,
 		},
 		Spec: corev1.PodSpec{
-			ServiceAccountName: "",
+			NodeSelector: map[string]string{
+				"kubernetes.io/hostname": update.Name,
+			},
+			Tolerations: []corev1.Toleration{
+				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoSchedule},
+			},
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsNonRoot: &[]bool{false}[0],
 				SeccompProfile: &corev1.SeccompProfile{
 					Type: corev1.SeccompProfileTypeRuntimeDefault,
 				},
+			},
+			Volumes: []corev1.Volume{
+				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}}},
 			},
 			Containers: []corev1.Container{{
 				Image:           update.Spec.Image,
@@ -295,6 +305,12 @@ func (r *NodeUpdateReconciler) createSchedule(update *updatemanagerv1alpha1.Node
 				},
 				Ports:   []corev1.ContainerPort{},
 				Command: []string{},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "host",
+						MountPath: "/host",
+					},
+				},
 			}},
 		},
 	}
