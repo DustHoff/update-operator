@@ -5,9 +5,11 @@ metadata:
   namespace: olm
 spec:
   sourceType: grpc
+  grpcPodConfig:
+    securityContextConfig: restricted
   image: ghcr.io/dusthoff/operator-catalog:latest
   displayName: Update Operator
   publisher: DustHoff Github
   updateStrategy:
     registryPoll:
-      interval: 1h
+      interval: 60m
