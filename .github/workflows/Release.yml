@@ -58,9 +58,15 @@ jobs:
           labels: ${{ steps.meta-bundle.outputs.labels }}
       - name: generate catalog channel config
         run: |
+          pre=""
           for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/")
           do 
             echo "  - name: updatecontroller.v$tag" >> catalog/operator.yaml
+            if [ ${#pre} -gt 0 ]
+            then
+              echo "  - replaces: updatecontroller.v$pre" >> catalog/operator.yaml
+            fi
+            pre=$tag
           done
       - name: generate catalog bundle config
         run: |
