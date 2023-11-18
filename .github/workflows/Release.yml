@@ -1,7 +1,8 @@
 name: Release
 on:
   push:
-    tags: "*"
+    tags:
+      - "*"
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -11,9 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: generate catalog channel config
-        run: for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/"); do echo "  - name: updatecontroller.v$tag" >> catalog/operator.yaml; done
+        run: |
+          for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/")
+          do 
+            echo "  - name: updatecontroller.v$tag" >> catalog/operator.yaml
+          done
       - name: generate catalog bundle config
-        run: for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/"); do ./bin/opm render ghcr.io/dusthoff/update-operator-bundle:$tag -o yaml >> catalog/operator.yaml; done
+        run: |
+          for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/")
+          do 
+            ./bin/opm render ghcr.io/dusthoff/update-operator-bundle:$tag -o yaml >> catalog/operator.yaml
+          done
       - name: validate catalog config
         run: ./bin/opm validate catalog
       - name: Login to DockerHub
