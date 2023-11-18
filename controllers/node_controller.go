@@ -21,6 +21,7 @@ import (
 	"github.com/DustHoff/update-operator/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"time"
 
@@ -33,12 +34,12 @@ import (
 // NodeReconciler reconciles a ClusterUpdate object
 type NodeReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme    *runtime.Scheme
+	Namespace string
 }
 
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates,verbs=get;list;watch;
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=,resources=clusterupdates,verbs=get;list;watch;
+//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates,verbs=get;create;update;list;watch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -107,5 +108,12 @@ func (n *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (n *NodeReconciler) generateNodeUpdate(node *v1.Node) (*v1alpha1.NodeUpdate, error) {
-	return nil, nil
+	nodeUpdate := &v1alpha1.NodeUpdate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      node.Name,
+			Namespace: n.Namespace,
+		},
+		Spec: v1alpha1.NodeUpdateSpec{},
+	}
+	return nodeUpdate, nil
 }
