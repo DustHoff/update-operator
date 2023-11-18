@@ -10,8 +10,12 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: generate catalog bundle config (Test)
-        run: git ls-remote --tags origin
+      - name: generate catalog channel config
+        run: for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/"); do echo "  - name: updatecontroller.v$tag" >> catalog/operator.yaml; done
+      - name: generate catalog bundle config
+        run: for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/"); do ./bin/opm render ghcr.io/dusthoff/update-operator-bundle:$tag -o yaml >> catalog/operator.yaml; done
+      - name: validate catalog config
+        run: ./bin/opm validate catalog
       - name: Login to DockerHub
         uses: docker/login-action@v2
         with:
@@ -23,7 +27,7 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version: '^1.20'
-      - name: build catalog
+      - name: generate Bundle Files
         run: make bundle IMG=ghcr.io/dusthoff/update-operator:${GITHUB_REF##*/} VERSION=${GITHUB_REF##*/}
       - name: Docker meta
         id: meta-operator

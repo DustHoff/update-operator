@@ -1,4 +1,9 @@
 ---
 defaultChannel: stable
-name: update-operator
+name: updatecontroller
 schema: olm.package
+---
+schema: olm.channel
+package: updatecontroller
+name: stable
+entries:
