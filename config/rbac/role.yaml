@@ -16,6 +16,32 @@ rules:
 - apiGroups:
   - updatemanager.onesi.de
   resources:
+  - clusterupdates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - clusterupdates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
+  - clusterupdates/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - updatemanager.onesi.de
+  resources:
   - nodeupdates
   verbs:
   - create

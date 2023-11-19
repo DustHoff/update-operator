@@ -44,7 +44,8 @@ type ClusterNodeUpdate struct {
 
 // ClusterUpdateStatus defines the observed state of ClusterUpdate
 type ClusterUpdateStatus struct {
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+	NextNodeUpdate int64              `json:"nextNodeUpdate,omitempty"`
+	Conditions     []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 //+kubebuilder:object:root=true

@@ -18,8 +18,10 @@ package controllers
 
 import (
 	"context"
+	"github.com/gorhill/cronexpr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"time"
 
@@ -31,15 +33,21 @@ import (
 	updatemanagerv1alpha1 "github.com/DustHoff/update-operator/api/v1alpha1"
 )
 
+const (
+	typeReconcile = "Reconcile"
+	typeAvailable = "Available"
+	typeDegraded  = "Degraded"
+)
+
 // NodeReconciler reconciles a ClusterUpdate object
 type ClusterUpdateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/finalizers,verbs=update
 //+kubebuilder:rbac:groups=v1,resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=v1,resources=pods/status,verbs=get;update;patch
 
@@ -70,7 +78,28 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		log.Info("node update has been disabled by cluster update definition")
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
-
+	if clusterUpdate.Spec.Update.Schedule == "" {
+		log.Info("missing schedule definition")
+		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeDegraded, Status: metav1.ConditionTrue, Reason: "Reconciling", Message: "missing node update schedule"})
+		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
+			log.Error(err, "Failed to update node update status")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+	if clusterUpdate.Status.NextNodeUpdate == 0 {
+		log.Info("evaluating next node update schedule time")
+		log.Info("configured schedule is " + clusterUpdate.Spec.Update.Schedule)
+		nextTime := cronexpr.MustParse(clusterUpdate.Spec.Update.Schedule).Next(time.Now())
+		log.Info("evaluated next run is " + nextTime.String())
+		clusterUpdate.Status.NextNodeUpdate = nextTime.UnixMilli()
+		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "Schedule identified", Message: "next node update execution identified"})
+		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
+			log.Error(err, "Failed to update node update status")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
