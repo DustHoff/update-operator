@@ -16,32 +16,6 @@ rules:
 - apiGroups:
   - updatemanager.onesi.de
   resources:
-  - clusterupdates
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - updatemanager.onesi.de
-  resources:
-  - clusterupdates/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - updatemanager.onesi.de
-  resources:
-  - clusterupdates/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - updatemanager.onesi.de
-  resources:
   - nodeupdates
   verbs:
   - create
@@ -68,7 +42,7 @@ rules:
 - apiGroups:
   - v1
   resources:
-  - Pod
+  - pods
   verbs:
   - create
   - delete
@@ -80,7 +54,7 @@ rules:
 - apiGroups:
   - v1
   resources:
-  - Pod/status
+  - pods/status
   verbs:
   - get
   - patch
