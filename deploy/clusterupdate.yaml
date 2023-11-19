@@ -1,0 +1,6 @@
+apiVersion: updatemanager.onesi.de/v1alpha1
+kind: ClusterUpdate
+metadata:
+  name: default
+  namespace: update
+spec: {}
