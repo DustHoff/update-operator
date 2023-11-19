@@ -36,15 +36,30 @@ spec:
             description: NodeUpdateSpec defines the desired state of NodeUpdate
             properties:
               image:
-                description: Foo is an example field of NodeUpdate. Edit nodeupdate_types.go
-                  to remove/update
+                description: Defines the Image to Run OS Updates on the node
                 type: string
+              packages:
+                description: Defines which package get updated during update process
+                properties:
+                  hold:
+                    description: Defines which packages get hold back during update
+                      process
+                    items:
+                      type: string
+                    type: array
+                  packages:
+                    description: Defines which package get updated. If not set, all
+                      packages get updated
+                    items:
+                      type: string
+                    type: array
+                type: object
               priority:
+                description: Defines the update order of all nodes
                 format: int32
                 type: integer
               role:
-                type: string
-              schedule:
+                description: Represent the Role of the given node
                 type: string
             type: object
           status:

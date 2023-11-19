@@ -35,9 +35,11 @@ spec:
           spec:
             description: ClusterUpdateSpec defines the desired state of ClusterUpdate
             properties:
+              schedule:
+                description: Describe the OS Update schedule
+                type: string
               version:
-                description: Foo is an example field of ClusterUpdate. Edit clusterupdate_types.go
-                  to remove/update
+                description: Desired Kubernetes Version to install
                 type: string
             type: object
           status:

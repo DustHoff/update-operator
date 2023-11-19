@@ -25,11 +25,11 @@ import (
 
 // ClusterUpdateSpec defines the desired state of ClusterUpdate
 type ClusterUpdateSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ClusterUpdate. Edit clusterupdate_types.go to remove/update
-	Version string `json:"version,omitempty"`
+	// Desired Kubernetes Version to install
+	K8Version string `json:"version,omitempty"`
+	// Describe the OS Update schedule
+	Schedule string `json:"schedule,omitempty"`
 }
 
 // ClusterUpdateStatus defines the observed state of ClusterUpdate
