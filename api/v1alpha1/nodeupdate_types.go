@@ -25,14 +25,14 @@ import (
 
 // NodeUpdateSpec defines the desired state of NodeUpdate
 type NodeUpdateSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of NodeUpdate. Edit nodeupdate_types.go to remove/update
-	Image    string `json:"image,omitempty"`
-	Schedule string `json:"schedule,omitempty"`
-	Role     string `json:"role,omitempty"`
-	Priority int32  `json:"priority,omitempty"`
+	// Defines the Image to Run OS Updates on the node
+	Image string `json:"image,omitempty"`
+	// Represent the Role of the given node
+	Role string `json:"role,omitempty"`
+	// Defines the update order of all nodes
+	Priority int32 `json:"priority,omitempty"`
+	// Defines which package get updated during update process
+	Packages NodeUpdatePackages `json:"packages,omitempty"`
 }
 
 // NodeUpdateStatus defines the observed state of NodeUpdate
@@ -59,6 +59,14 @@ type NodeUpdateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []NodeUpdate `json:"items"`
+}
+
+type NodeUpdatePackages struct {
+	// Defines which package get updated.
+	// If not set, all packages get updated
+	Install []string `json:"packages,omitempty"`
+	// Defines which packages get hold back during update process
+	Hold []string `json:"hold,omitempty"`
 }
 
 func init() {
