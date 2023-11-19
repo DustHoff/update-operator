@@ -38,7 +38,7 @@ type NodeReconciler struct {
 	Namespace string
 }
 
-//+kubebuilder:rbac:groups="",resources=Node,verbs=get;list;watch;
+//+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates,verbs=get;create;update;list;watch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -64,7 +64,7 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 	found := &v1alpha1.NodeUpdate{}
-	err = n.Get(ctx, types.NamespacedName{Name: node.Name, Namespace: node.Namespace}, found)
+	err = n.Get(ctx, types.NamespacedName{Name: node.Name, Namespace: n.Namespace}, found)
 	if err != nil && apierrors.IsNotFound(err) {
 		nodeUpdate, err := n.generateNodeUpdate(node)
 		if err != nil {
@@ -74,8 +74,8 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if err = n.Create(ctx, nodeUpdate); err != nil {
 			log.Error(err, "Failed to create NodeUpdate resource")
 		}
-		err = n.Get(ctx, types.NamespacedName{Name: node.Name, Namespace: node.Namespace}, found)
-		if err != nil {
+
+		if err = n.Get(ctx, types.NamespacedName{Name: node.Name, Namespace: n.Namespace}, found); err != nil {
 			log.Error(err, "Failed to fetch nodeUpdate resource")
 			return ctrl.Result{}, err
 		}
