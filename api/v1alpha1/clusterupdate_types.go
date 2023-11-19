@@ -35,7 +35,7 @@ type ClusterUpdateSpec struct {
 
 type ClusterNodeUpdate struct {
 	// disable the whole node update feature
-	disabled bool `json:"disabled"`
+	Disabled bool `json:"disabled"`
 	// define the node update schedule
 	Schedule string `json:"schedule,omitempty"`
 	// Define the number of unavailable nodes during update process
