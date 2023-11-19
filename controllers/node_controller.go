@@ -85,7 +85,7 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 	var role string
-	if _, ok := node.ObjectMeta.Labels["node-role.kubernetes.io/control-plan"]; ok {
+	if _, ok := node.ObjectMeta.Labels["node-role.kubernetes.io/control-plane"]; ok {
 		role = "control-plane"
 	} else {
 		role = "data-plane"
