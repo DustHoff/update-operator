@@ -93,7 +93,7 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		nextTime := cronexpr.MustParse(clusterUpdate.Spec.Update.Schedule).Next(time.Now())
 		log.Info("evaluated next run is " + nextTime.String())
 		clusterUpdate.Status.NextNodeUpdate = nextTime.Round(time.Minute).UnixMilli()
-		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "Schedule identified", Message: "next node update execution identified"})
+		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "nextExecution", Message: "next node update execution is " + nextTime.String()})
 		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
 			log.Error(err, "Failed to update node update status")
 			return ctrl.Result{}, err
@@ -102,11 +102,16 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	if time.Now().Round(time.Minute).Equal(time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)) || time.Now().Round(time.Minute).After(time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)) {
 		log.Info("start node update process")
-		//TODO: implement nodeupdate pod execution
+		nodeUpdateList := &updatemanagerv1alpha1.NodeUpdateList{}
+		if err := r.List(ctx, nodeUpdateList); err != nil {
+			log.Error(err, "failed to fetch node update list")
+			return ctrl.Result{}, err
+		}
+		r.startNodeUpdateFlow(ctx, nodeUpdateList)
 		nextTime := cronexpr.MustParse(clusterUpdate.Spec.Update.Schedule).Next(time.Now())
 		log.Info("evaluated next run is " + nextTime.String())
 		clusterUpdate.Status.NextNodeUpdate = nextTime.Round(time.Minute).UnixMilli()
-		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "Schedule identified", Message: "next node update execution identified"})
+		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "nextExecution", Message: "next node update execution is " + nextTime.String()})
 		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
 			log.Error(err, "Failed to update node update status")
 			return ctrl.Result{}, err
