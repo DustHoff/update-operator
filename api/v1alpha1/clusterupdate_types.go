@@ -28,8 +28,17 @@ type ClusterUpdateSpec struct {
 
 	// Desired Kubernetes Version to install
 	K8Version string `json:"version,omitempty"`
-	// Describe the OS Update schedule
+	// Describe the update behavior
+	Update ClusterNodeUpdate `json:"update,omitempty"`
+}
+
+type ClusterNodeUpdate struct {
+	// disable the whole node update feature
+	disabled bool `json:"disabled"`
+	// define the node update schedule
 	Schedule string `json:"schedule,omitempty"`
+	// Define the number of unavailable nodes during update process
+	MaxUnavailableNode int32 `json:"maxUnavailableNode,omitempty"`
 }
 
 // ClusterUpdateStatus defines the observed state of ClusterUpdate

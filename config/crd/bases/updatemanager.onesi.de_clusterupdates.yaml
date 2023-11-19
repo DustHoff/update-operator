@@ -35,9 +35,23 @@ spec:
           spec:
             description: ClusterUpdateSpec defines the desired state of ClusterUpdate
             properties:
-              schedule:
-                description: Describe the OS Update schedule
-                type: string
+              update:
+                description: Describe the update behavior
+                properties:
+                  disabled:
+                    description: disable the whole node update feature
+                    type: boolean
+                  maxUnavailableNode:
+                    description: Define the number of unavailable nodes during update
+                      process
+                    format: int32
+                    type: integer
+                  schedule:
+                    description: define the node update schedule
+                    type: string
+                required:
+                - disabled
+                type: object
               version:
                 description: Desired Kubernetes Version to install
                 type: string
