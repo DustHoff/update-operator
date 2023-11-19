@@ -28,6 +28,7 @@ type ClusterUpdateSpec struct {
 
 	// Desired Kubernetes Version to install
 	K8Version string `json:"version,omitempty"`
+	K8Image   string `json:"k8Image,omitempty"`
 	// Describe the update behavior
 	Update ClusterNodeUpdate `json:"update,omitempty"`
 }
