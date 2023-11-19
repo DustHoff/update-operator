@@ -18,6 +18,10 @@ package controllers
 
 import (
 	"context"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -33,9 +37,11 @@ type ClusterUpdateReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=v1,resources=pods,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=v1,resources=pods/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -47,9 +53,23 @@ type ClusterUpdateReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	clusterUpdate := &updatemanagerv1alpha1.ClusterUpdate{}
+	err := r.Get(ctx, req.NamespacedName, clusterUpdate)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("cluster update not found ignoring the resource")
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "Failed to fetch cluster update resource")
+		return ctrl.Result{}, err
+	}
+
+	if clusterUpdate.Spec.Update.Disabled {
+		log.Info("node update has been disabled by cluster update definition")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -59,4 +79,58 @@ func (r *ClusterUpdateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&updatemanagerv1alpha1.ClusterUpdate{}).
 		Complete(r)
+}
+
+func (r *ClusterUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      update.Name,
+			Namespace: update.Namespace,
+		},
+		Spec: corev1.PodSpec{
+			NodeSelector: map[string]string{
+				"kubernetes.io/hostname": update.Name,
+			},
+			Tolerations: []corev1.Toleration{
+				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoSchedule},
+			},
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsNonRoot: &[]bool{false}[0],
+				SeccompProfile: &corev1.SeccompProfile{
+					Type: corev1.SeccompProfileTypeRuntimeDefault,
+				},
+			},
+			Volumes: []corev1.Volume{
+				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}}},
+			},
+			Containers: []corev1.Container{{
+				Image:           update.Spec.Image,
+				Name:            "update",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					RunAsNonRoot:             &[]bool{false}[0],
+					RunAsUser:                &[]int64{0}[0],
+					AllowPrivilegeEscalation: &[]bool{true}[0],
+					Capabilities: &corev1.Capabilities{
+						Drop: []corev1.Capability{
+							"ALL",
+						},
+					},
+				},
+				Ports:   []corev1.ContainerPort{},
+				Command: []string{},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "host",
+						MountPath: "/host",
+					},
+				},
+			}},
+		},
+	}
+
+	if err := ctrl.SetControllerReference(update, pod, r.Scheme); err != nil {
+		return nil, err
+	}
+	return pod, nil
 }

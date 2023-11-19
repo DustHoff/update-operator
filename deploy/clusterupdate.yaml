@@ -3,4 +3,6 @@ kind: ClusterUpdate
 metadata:
   name: default
   namespace: update
-spec: {}
+spec:
+  update:
+    disabled: true
