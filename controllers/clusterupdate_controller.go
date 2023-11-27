@@ -18,11 +18,13 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"github.com/gorhill/cronexpr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,7 +55,6 @@ type ClusterUpdateReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
 // the ClusterUpdate object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
@@ -107,14 +108,22 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			log.Error(err, "failed to fetch node update list")
 			return ctrl.Result{}, err
 		}
-		r.startNodeUpdateFlow(ctx, nodeUpdateList)
-		nextTime := cronexpr.MustParse(clusterUpdate.Spec.Update.Schedule).Next(time.Now())
-		log.Info("evaluated next run is " + nextTime.String())
-		clusterUpdate.Status.NextNodeUpdate = nextTime.Round(time.Minute).UnixMilli()
-		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "nextExecution", Message: "next node update execution is " + nextTime.String()})
+		finished, err := r.executeNodeUpdateFlow(ctx, nodeUpdateList, clusterUpdate)
+		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionTrue, Reason: "Update", Message: "Running Node Update"})
 		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
 			log.Error(err, "Failed to update node update status")
 			return ctrl.Result{}, err
+		}
+
+		if finished {
+			nextTime := cronexpr.MustParse(clusterUpdate.Spec.Update.Schedule).Next(time.Now())
+			log.Info("evaluated next run is " + nextTime.String())
+			clusterUpdate.Status.NextNodeUpdate = nextTime.Round(time.Minute).UnixMilli()
+			meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "nextExecution", Message: "next node update execution is " + nextTime.String()})
+			if err = r.Status().Update(ctx, clusterUpdate); err != nil {
+				log.Error(err, "Failed to update node update status")
+				return ctrl.Result{}, err
+			}
 		}
 
 	}
@@ -180,4 +189,43 @@ func (r *ClusterUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alp
 		return nil, err
 	}
 	return pod, nil
+}
+
+func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, list *updatemanagerv1alpha1.NodeUpdateList, update *updatemanagerv1alpha1.ClusterUpdate) (bool, error) {
+	log := log.FromContext(ctx)
+	for _, item := range list.Items {
+		//check if the node update has already been executed
+		if item.ObjectMeta.Labels["updatemanager.onesi.de/execution"] != string(update.Status.NextNodeUpdate) {
+			//node update not initialized yet
+			log.Info("initializing update process for " + item.Name)
+			pod, _ := r.createNodeUpdatePod(&item)
+			if err := r.Create(ctx, pod); err != nil {
+				log.Error(err, "failed to create update pod")
+				return false, err
+			}
+			log.Info("update pod created for " + item.Name)
+			item.ObjectMeta.Labels["updatemanager.onesi.de/execution"] = string(update.Status.NextNodeUpdate)
+			if err := r.Update(ctx, &item); err != nil {
+				log.Error(err, "failed to label node update")
+				return false, err
+			}
+		} else {
+			pod := &corev1.Pod{}
+			if err := r.Get(ctx, types.NamespacedName{Name: item.Name, Namespace: item.Namespace}, pod); err != nil {
+				log.Error(err, "failed to fetch update pod")
+				return false, err
+			}
+			switch pod.Status.Phase {
+			case "Running":
+			case "Failed":
+				//TODO: Fetch pod logs
+				err := errors.New("error during node update")
+				log.Error(err, "Something went wrong during node update")
+				return true, err
+			case "Succeeded":
+
+			}
+		}
+	}
+	return true, nil
 }
