@@ -87,3 +87,19 @@ jobs:
             linux/amd64
           tags: ghcr.io/dusthoff/operator-catalog:latest
           labels: ${{ steps.meta-bundle.outputs.labels }}
+      - name: Docker meta
+        id: ubuntu-22-04
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/dusthoff/ubuntu-patch-22-04
+      - name: Build and push operator-bundle
+        uses: docker/build-push-action@v5
+        with:
+          context: patchImages/ubuntu
+          file: 22.04/Dockerfile
+          push: true
+          platforms: |
+            linux/arm64
+            linux/amd64
+          tags: ${{ steps.ubuntu-22-04.outputs.tags }}
+          labels: ${{ steps.ubuntu-22-04.outputs.labels }}
