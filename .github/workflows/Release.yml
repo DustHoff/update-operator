@@ -96,7 +96,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./patchImages/ubuntu/
-          file: 22-04/Dockerfile
+          file: ./patchImages/ubuntu/22-04/Dockerfile
           push: true
           platforms: |
             linux/arm64
