@@ -95,8 +95,8 @@ jobs:
       - name: Build and push ubuntu patch image
         uses: docker/build-push-action@v5
         with:
-          context: ./patchImages/ubuntu
-          file: ./22-04/Dockerfile
+          context: ./patchImages/ubuntu/
+          file: 22-04/Dockerfile
           push: true
           platforms: |
             linux/arm64
