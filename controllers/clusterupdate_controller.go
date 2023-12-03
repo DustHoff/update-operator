@@ -154,8 +154,12 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 		if item.ObjectMeta.Labels["updatemanager.onesi.de/execution"] != string(update.Status.NextNodeUpdate) {
 			//node update not initialized yet
 			log.Info("initializing update process for " + item.Name)
-			item.ObjectMeta.Labels["updatemanager.onesi.de/execution"] = string(update.Status.NextNodeUpdate)
-			item.ObjectMeta.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
+			item.ObjectMeta.Labels = map[string]string{
+				"updatemanager.onesi.de/execution": string(update.Status.NextNodeUpdate),
+			}
+			item.ObjectMeta.Annotations = map[string]string{
+				"updatemanager.onesi.de/execute": "nodeUpdate",
+			}
 			if err := r.Update(ctx, &item); err != nil {
 				log.Error(err, "failed to label and annotate node update")
 				return false, err
