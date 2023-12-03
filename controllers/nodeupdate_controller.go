@@ -159,43 +159,55 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	pod := &corev1.Pod{}
-	err = r.Get(ctx, types.NamespacedName{Name: nodeUpdate.Name, Namespace: nodeUpdate.Namespace}, pod)
-	if err != nil && apierrors.IsNotFound(err) {
-		log.Info("currently no running update for " + nodeUpdate.Name)
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	}
-	log.Info("update pod for node " + nodeUpdate.Name + " is in " + string(pod.Status.Phase))
-	switch pod.Status.Phase {
-	case "Pending":
-		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-			Status: metav1.ConditionTrue, Reason: "prepare for update", Message: "POD is in pending state"})
-	case "Running":
-		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-			Status: metav1.ConditionTrue, Reason: "update in process", Message: "POD is in running state"})
-	case "Succeeded":
-		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
-			Status: metav1.ConditionTrue, Reason: "update has been succeeded", Message: r.fetchPodLogs(ctx, pod)})
-		if err = r.Delete(ctx, pod); err != nil {
-			log.Error(err, "Failed to cleanup update pod")
+	execution, ok := nodeUpdate.ObjectMeta.Labels["updatemanager.onesi.de/execution"]
+	trigger, triggerOk := nodeUpdate.ObjectMeta.Annotations["updatemanager.onesi.de/execute"]
+	if ok {
+		// found execution label
+		pod := &corev1.Pod{}
+		err = r.Get(ctx, types.NamespacedName{Name: nodeUpdate.Name + "-" + execution, Namespace: nodeUpdate.Namespace}, pod)
+		if err != nil && apierrors.IsNotFound(err) {
+			if triggerOk && trigger == "nodeUpdate" && nodeUpdate.Spec.Image != "" {
+				log.Info("create node update pod")
+				pod, _ := r.createNodeUpdatePod(nodeUpdate)
+				if err := r.Create(ctx, pod); err != nil {
+					log.Error(err, "failed to create patch")
+				}
+				delete(nodeUpdate.ObjectMeta.Annotations, "updatemanager.onesi.de/execute")
+				r.Update(ctx, nodeUpdate)
+			}
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		}
+		log.Info("update pod for node " + nodeUpdate.Name + " is in " + string(pod.Status.Phase))
+		switch pod.Status.Phase {
+		case "Pending":
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+				Status: metav1.ConditionTrue, Reason: "prepare for update", Message: "POD is in pending state"})
+		case "Running":
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+				Status: metav1.ConditionTrue, Reason: "update in process", Message: "POD is in running state"})
+		case "Succeeded":
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
+				Status: metav1.ConditionTrue, Reason: "update has been succeeded", Message: r.fetchPodLogs(ctx, pod)})
+			if err = r.Delete(ctx, pod); err != nil {
+				log.Error(err, "Failed to cleanup update pod")
+				return ctrl.Result{}, err
+			}
+		case "Failed":
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
+				Status: metav1.ConditionTrue, Reason: "update has been failed", Message: r.fetchPodLogs(ctx, pod)})
+			if err = r.Delete(ctx, pod); err != nil {
+				log.Error(err, "Failed to cleanup update pod")
+				return ctrl.Result{}, err
+			}
+		default:
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+				Status: metav1.ConditionFalse, Reason: "unknown", Message: "POD is in unknown state"})
+
+		}
+		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
 			return ctrl.Result{}, err
 		}
-	case "Failed":
-		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
-			Status: metav1.ConditionTrue, Reason: "update has been failed", Message: r.fetchPodLogs(ctx, pod)})
-		if err = r.Delete(ctx, pod); err != nil {
-			log.Error(err, "Failed to cleanup update pod")
-			return ctrl.Result{}, err
-		}
-	default:
-		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-			Status: metav1.ConditionFalse, Reason: "unknown", Message: "POD is in unknown state"})
-
 	}
-	if err = r.Status().Update(ctx, nodeUpdate); err != nil {
-		return ctrl.Result{}, err
-	}
-
 	//https://stackoverflow.com/questions/53852530/how-to-get-logs-from-kubernetes-using-go
 	return ctrl.Result{}, nil
 }
@@ -232,4 +244,58 @@ func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod
 	}
 	str := buf.String()
 	return str
+}
+
+func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      update.Name,
+			Namespace: update.Namespace,
+		},
+		Spec: corev1.PodSpec{
+			NodeSelector: map[string]string{
+				"kubernetes.io/hostname": update.Name,
+			},
+			Tolerations: []corev1.Toleration{
+				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoSchedule},
+			},
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsNonRoot: &[]bool{false}[0],
+				SeccompProfile: &corev1.SeccompProfile{
+					Type: corev1.SeccompProfileTypeRuntimeDefault,
+				},
+			},
+			Volumes: []corev1.Volume{
+				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}}},
+			},
+			Containers: []corev1.Container{{
+				Image:           update.Spec.Image,
+				Name:            "update",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				SecurityContext: &corev1.SecurityContext{
+					RunAsNonRoot:             &[]bool{false}[0],
+					RunAsUser:                &[]int64{0}[0],
+					AllowPrivilegeEscalation: &[]bool{true}[0],
+					Capabilities: &corev1.Capabilities{
+						Drop: []corev1.Capability{
+							"ALL",
+						},
+					},
+				},
+				Ports:   []corev1.ContainerPort{},
+				Command: []string{},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "host",
+						MountPath: "/host",
+					},
+				},
+			}},
+		},
+	}
+
+	if err := ctrl.SetControllerReference(update, pod, r.Scheme); err != nil {
+		return nil, err
+	}
+	return pod, nil
 }

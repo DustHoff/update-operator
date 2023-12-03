@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sort"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -137,81 +138,31 @@ func (r *ClusterUpdateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ClusterUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
-	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      update.Name,
-			Namespace: update.Namespace,
-		},
-		Spec: corev1.PodSpec{
-			NodeSelector: map[string]string{
-				"kubernetes.io/hostname": update.Name,
-			},
-			Tolerations: []corev1.Toleration{
-				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoSchedule},
-			},
-			SecurityContext: &corev1.PodSecurityContext{
-				RunAsNonRoot: &[]bool{false}[0],
-				SeccompProfile: &corev1.SeccompProfile{
-					Type: corev1.SeccompProfileTypeRuntimeDefault,
-				},
-			},
-			Volumes: []corev1.Volume{
-				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}}},
-			},
-			Containers: []corev1.Container{{
-				Image:           update.Spec.Image,
-				Name:            "update",
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				SecurityContext: &corev1.SecurityContext{
-					RunAsNonRoot:             &[]bool{false}[0],
-					RunAsUser:                &[]int64{0}[0],
-					AllowPrivilegeEscalation: &[]bool{true}[0],
-					Capabilities: &corev1.Capabilities{
-						Drop: []corev1.Capability{
-							"ALL",
-						},
-					},
-				},
-				Ports:   []corev1.ContainerPort{},
-				Command: []string{},
-				VolumeMounts: []corev1.VolumeMount{
-					{
-						Name:      "host",
-						MountPath: "/host",
-					},
-				},
-			}},
-		},
-	}
-
-	if err := ctrl.SetControllerReference(update, pod, r.Scheme); err != nil {
-		return nil, err
-	}
-	return pod, nil
-}
-
 func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, list *updatemanagerv1alpha1.NodeUpdateList, update *updatemanagerv1alpha1.ClusterUpdate) (bool, error) {
 	log := log.FromContext(ctx)
 	for _, item := range list.Items {
+		if item.Spec.Priority < 1 {
+			return false, errors.New("Unsupported Priority for node " + item.Name + ". lowest node priority is 1")
+		}
+	}
+	items := list.Items
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Spec.Priority > items[i].Spec.Priority
+	})
+	for _, item := range items {
 		//check if the node update has already been executed
 		if item.ObjectMeta.Labels["updatemanager.onesi.de/execution"] != string(update.Status.NextNodeUpdate) {
 			//node update not initialized yet
 			log.Info("initializing update process for " + item.Name)
-			pod, _ := r.createNodeUpdatePod(&item)
-			if err := r.Create(ctx, pod); err != nil {
-				log.Error(err, "failed to create update pod")
-				return false, err
-			}
-			log.Info("update pod created for " + item.Name)
 			item.ObjectMeta.Labels["updatemanager.onesi.de/execution"] = string(update.Status.NextNodeUpdate)
+			item.ObjectMeta.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
 			if err := r.Update(ctx, &item); err != nil {
-				log.Error(err, "failed to label node update")
+				log.Error(err, "failed to label and annotate node update")
 				return false, err
 			}
 		} else {
 			pod := &corev1.Pod{}
-			if err := r.Get(ctx, types.NamespacedName{Name: item.Name, Namespace: item.Namespace}, pod); err != nil {
+			if err := r.Get(ctx, types.NamespacedName{Name: item.Name + "-" + string(update.Status.NextNodeUpdate), Namespace: item.Namespace}, pod); err != nil {
 				log.Error(err, "failed to fetch update pod")
 				return false, err
 			}
