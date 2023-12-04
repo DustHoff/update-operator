@@ -151,11 +151,11 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 	})
 	for _, item := range items {
 		//check if the node update has already been executed
-		if item.ObjectMeta.Labels["updatemanager.onesi.de/execution"] != string(update.Status.NextNodeUpdate) {
+		if item.ObjectMeta.Labels["updatemanager.onesi.de"] != string(update.Status.NextNodeUpdate) {
 			//node update not initialized yet
 			log.Info("initializing update process for " + item.Name)
 			item.ObjectMeta.Labels = map[string]string{
-				"updatemanager.onesi.de/execution": string(update.Status.NextNodeUpdate),
+				"updatemanager.onesi.de": string(update.Status.NextNodeUpdate),
 			}
 			item.ObjectMeta.Annotations = map[string]string{
 				"updatemanager.onesi.de/execute": "nodeUpdate",
