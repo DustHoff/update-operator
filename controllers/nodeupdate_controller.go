@@ -159,8 +159,8 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	execution, ok := nodeUpdate.ObjectMeta.Labels["updatemanager.onesi.de/execution"]
-	trigger, triggerOk := nodeUpdate.ObjectMeta.Annotations["updatemanager.onesi.de/execute"]
+	execution, ok := nodeUpdate.Labels["updatemanager.onesi.de/execution"]
+	trigger, triggerOk := nodeUpdate.Annotations["updatemanager.onesi.de/execute"]
 	if ok {
 		// found execution label
 		pod := &corev1.Pod{}
@@ -172,7 +172,7 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				if err := r.Create(ctx, pod); err != nil {
 					log.Error(err, "failed to create patch")
 				}
-				delete(nodeUpdate.ObjectMeta.Annotations, "updatemanager.onesi.de/execute")
+				delete(nodeUpdate.Annotations, "updatemanager.onesi.de/execute")
 				r.Update(ctx, nodeUpdate)
 			}
 			return ctrl.Result{RequeueAfter: time.Minute}, nil
