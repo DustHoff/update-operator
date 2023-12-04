@@ -157,7 +157,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 			if item.Labels == nil {
 				item.Labels = make(map[string]string)
 			}
-			item.Labels["updatemanager.onesi.de"] = string(update.Status.NextNodeUpdate)
+			item.Labels["updatemanager.onesi.de/execution"] = string(update.Status.NextNodeUpdate)
 			if item.Annotations == nil {
 				item.Annotations = make(map[string]string)
 			}
