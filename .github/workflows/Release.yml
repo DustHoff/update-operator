@@ -59,7 +59,7 @@ jobs:
       - name: generate catalog channel config
         run: |
           pre=""
-          for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/")
+          for tag in $(git ls-remote --tags origin | tr "\t" " " | cut -d " " -f2 | tr -d "refs\/tags\/" | sort -t. -k 1,1n -k 2,2n -k 3,3n)
           do 
             echo "  - name: updatecontroller.v$tag" >> catalog/operator.yaml
             if [ ${#pre} -gt 0 ]
