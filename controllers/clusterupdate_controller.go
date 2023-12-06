@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/gorhill/cronexpr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -165,7 +164,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 				clone.Annotations = make(map[string]string)
 			}
 			clone.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
-			log.Info(fmt.Sprintf("%+v\\n", clone))
+
 			if err := r.Update(ctx, clone); err != nil {
 				log.Error(err, "failed to label and annotate node update")
 				return false, err
