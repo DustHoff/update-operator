@@ -249,7 +249,7 @@ func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod
 func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      update.Name,
+			Name:      update.Name + "-" + update.Labels["updatemanager.onesi.de/execution"],
 			Namespace: update.Namespace,
 		},
 		Spec: corev1.PodSpec{

@@ -172,7 +172,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 			return false, nil
 		} else {
 			pod := &corev1.Pod{}
-			if err := r.Get(ctx, types.NamespacedName{Name: item.Name + "-" + string(update.Status.NextNodeUpdate), Namespace: item.Namespace}, pod); err != nil {
+			if err := r.Get(ctx, types.NamespacedName{Name: item.Name + "-" + strconv.FormatInt(update.Status.NextNodeUpdate, 10), Namespace: item.Namespace}, pod); err != nil {
 				log.Error(err, "failed to fetch update pod")
 				return false, err
 			}
