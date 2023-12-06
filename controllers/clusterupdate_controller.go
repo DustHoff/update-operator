@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sort"
+	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -152,14 +153,14 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 	})
 	for _, item := range items {
 		//check if the node update has already been executed
-		if item.Labels["updatemanager.onesi.de/execution"] != string(update.Status.NextNodeUpdate) {
+		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
 			//node update not initialized yet
 			log.Info("initializing update process for " + item.Name)
 			clone := item.DeepCopy()
 			if clone.Labels == nil {
 				clone.Labels = make(map[string]string)
 			}
-			clone.Labels["updatemanager.onesi.de/execution"] = string(update.Status.NextNodeUpdate)
+			clone.Labels["updatemanager.onesi.de/execution"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
 			if clone.Annotations == nil {
 				clone.Annotations = make(map[string]string)
 			}
@@ -184,7 +185,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 				log.Error(err, "Something went wrong during node update")
 				return true, err
 			case "Succeeded":
-
+				continue
 			}
 		}
 	}
