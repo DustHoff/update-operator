@@ -150,7 +150,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].Spec.Priority > items[i].Spec.Priority
 	})
-	for _, item := range items {
+	for index, item := range items {
 		//check if the node update has already been executed
 		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
 			//node update not initialized yet
@@ -177,14 +177,16 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 				return false, err
 			}
 			switch pod.Status.Phase {
-			case "Running":
 			case "Failed":
 				//TODO: Fetch pod logs
 				err := errors.New("error during node update")
 				log.Error(err, "Something went wrong during node update")
-				return true, err
+				return false, err
 			case "Succeeded":
 				continue
+			default:
+				log.Info("update not finished yet on index " + strconv.Itoa(index))
+				return false, nil
 			}
 		}
 	}
