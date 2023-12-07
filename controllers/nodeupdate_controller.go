@@ -247,6 +247,7 @@ func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod
 }
 
 func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
+	volumeType := corev1.HostPathDirectory
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      update.Name + "-" + update.Labels["updatemanager.onesi.de/execution"],
@@ -265,8 +266,9 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 					Type: corev1.SeccompProfileTypeRuntimeDefault,
 				},
 			},
+			RestartPolicy: corev1.RestartPolicyNever,
 			Volumes: []corev1.Volume{
-				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}}},
+				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/", Type: &volumeType}}},
 			},
 			Containers: []corev1.Container{{
 				Image:           update.Spec.Image,
