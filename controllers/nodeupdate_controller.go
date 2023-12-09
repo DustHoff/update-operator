@@ -266,14 +266,14 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 					Type: corev1.SeccompProfileTypeRuntimeDefault,
 				},
 			},
-			RestartPolicy: corev1.RestartPolicyNever,
+			RestartPolicy: corev1.RestartPolicyOnFailure,
 			Volumes: []corev1.Volume{
 				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/", Type: &volumeType}}},
 			},
 			Containers: []corev1.Container{{
 				Image:           update.Spec.Image,
 				Name:            "update",
-				ImagePullPolicy: corev1.PullIfNotPresent,
+				ImagePullPolicy: corev1.PullAlways,
 				SecurityContext: &corev1.SecurityContext{
 					RunAsNonRoot:             &[]bool{false}[0],
 					RunAsUser:                &[]int64{0}[0],
