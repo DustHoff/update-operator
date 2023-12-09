@@ -62,6 +62,7 @@ type NodeUpdateReconciler struct {
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=pods/log,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -212,19 +213,25 @@ func (r *NodeUpdateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod) string {
+	log := log.FromContext(ctx)
+	log.Info("try to fetch pod logs")
 	podLogOpts := corev1.PodLogOptions{}
 	config, err := rest.InClusterConfig()
 	if err != nil {
+		log.Error(err, "error while config")
 		return "error in getting config"
 	}
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
+		log.Error(err, "error while config")
 		return "error in getting access to K8S"
 	}
 	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
+
 	podLogs, err := req.Stream(ctx)
 	if err != nil {
+		log.Error(err, "error in opening stream")
 		return "error in opening stream"
 	}
 	defer podLogs.Close()
