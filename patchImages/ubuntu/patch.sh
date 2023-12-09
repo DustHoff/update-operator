@@ -11,6 +11,6 @@ cp /patch/source/ubuntu.list /host/etc/apt/sources.list
 cp /patch/source/crio.list   /host/etc/apt/sources.list.d/crio.list
 cp -r /patch/keyrings         /host/usr/share/keyrings
 
-chroot /host bash -ic 'apt-get update'
+chroot /host su - root -c 'apt-get update'
 
 
