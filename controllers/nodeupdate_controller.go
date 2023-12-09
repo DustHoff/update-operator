@@ -279,7 +279,7 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 					RunAsUser:                &[]int64{0}[0],
 					AllowPrivilegeEscalation: &[]bool{true}[0],
 					Capabilities: &corev1.Capabilities{
-						Drop: []corev1.Capability{
+						Add: []corev1.Capability{
 							"sys_chroot",
 						},
 					},
