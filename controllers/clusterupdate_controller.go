@@ -151,6 +151,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 		return items[i].Spec.Priority > items[i].Spec.Priority
 	})
 	for index, item := range items {
+		log.Info(item.Name + " identified as " + strconv.Itoa(index) + " element")
 		//check if the node update has already been executed
 		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
 			//node update not initialized yet
