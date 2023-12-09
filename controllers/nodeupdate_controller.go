@@ -266,7 +266,7 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsNonRoot: &[]bool{false}[0],
 				SeccompProfile: &corev1.SeccompProfile{
-					Type: corev1.SeccompProfileTypeRuntimeDefault,
+					Type: corev1.SeccompProfileTypeUnconfined,
 				},
 			},
 			RestartPolicy: corev1.RestartPolicyOnFailure,
