@@ -252,6 +252,9 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      update.Name + "-" + update.Labels["updatemanager.onesi.de/execution"],
 			Namespace: update.Namespace,
+			Annotations: map[string]string{
+				"container.apparmor.security.beta.kubernetes.io/update": "unconfined",
+			},
 		},
 		Spec: corev1.PodSpec{
 			HostNetwork: true,
