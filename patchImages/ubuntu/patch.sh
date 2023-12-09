@@ -10,6 +10,6 @@ cp /patch/source/ubuntu.list /host/etc/apt/sources.list
 cp /patch/source/crio.list   /host/etc/apt/sources.list.d/crio.list
 cp -r /patch/keyrings         /host/usr/share/keyrings
 
-chroot /host apt-get update
+chroot /host bash -ic 'apt-get update'
 
 
