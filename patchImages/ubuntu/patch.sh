@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 echo run as
 id
 echo deleting existing sources
