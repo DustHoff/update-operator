@@ -280,7 +280,7 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 					AllowPrivilegeEscalation: &[]bool{true}[0],
 					Capabilities: &corev1.Capabilities{
 						Add: []corev1.Capability{
-							"sys_chroot",
+							"All",
 						},
 					},
 				},
