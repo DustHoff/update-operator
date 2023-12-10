@@ -27,3 +27,7 @@ then
   chroot /host su - root -c "apt-get install -y ${INSTALLPKG}"
 fi
 
+echo upgrade all packages
+chroot /host su - root -c "apt-get upgrade -y"
+
+
