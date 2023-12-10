@@ -23,6 +23,6 @@ fi
 if [ -n "${INSTALLPKG}" ]
 then
   echo force install specified packages: ${INSTALLPKG}
-  chroot /host su - root -c "apt-get install ${INSTALLPKG}"
+  chroot /host su - root -c "apt-get install -y ${INSTALLPKG}"
 fi
 
