@@ -3,7 +3,8 @@ set -e
 echo run as
 id
 echo deleting existing sources
-rm -f /host/etc/apt/sources.list.d/*.list
+rm -f /host/etc/apt/sources.list.d/ubuntu.list
+rm -f /host/etc/apt/sources.list.d/crio.list
 rm -f /host/etc/apt/sources.list
 
 echo update apt repositories
