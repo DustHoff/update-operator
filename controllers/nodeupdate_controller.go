@@ -249,7 +249,7 @@ func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod
 func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
 	volumeType := corev1.HostPathDirectory
 	hold := update.Spec.Packages.Hold
-	install := update.Spec.Packages.Hold
+	install := update.Spec.Packages.Install
 
 	if hold == nil {
 		hold = []string{}
