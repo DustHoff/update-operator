@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -247,6 +248,15 @@ func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod
 
 func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
 	volumeType := corev1.HostPathDirectory
+	hold := update.Spec.Packages.Hold
+	install := update.Spec.Packages.Hold
+
+	if hold == nil {
+		hold = []string{}
+	}
+	if install == nil {
+		install = []string{}
+	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      update.Name + "-" + update.Labels["updatemanager.onesi.de/execution"],
@@ -274,7 +284,11 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 				{Name: "host", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/", Type: &volumeType}}},
 			},
 			Containers: []corev1.Container{{
-				Image:           update.Spec.Image,
+				Image: update.Spec.Image,
+				Env: []corev1.EnvVar{
+					{Name: "HOLDPKG", Value: strings.Join(hold, " ")},
+					{Name: "INSTALLPKG", Value: strings.Join(install, " ")},
+				},
 				Name:            "update",
 				ImagePullPolicy: corev1.PullAlways,
 				SecurityContext: &corev1.SecurityContext{
