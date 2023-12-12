@@ -188,8 +188,22 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
 				Status: metav1.ConditionTrue, Reason: "update", Message: "POD is in running state"})
 		case "Succeeded":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
 				Status: metav1.ConditionTrue, Reason: "update", Message: r.fetchPodLogs(ctx, pod)})
+			if err := r.Status().Update(ctx, nodeUpdate); err != nil {
+				return ctrl.Result{}, err
+			}
+
+			err := r.scheduleNodeRestart(ctx, nodeUpdate)
+			message := ""
+			if err != nil {
+				message = err.Error()
+			} else {
+				message = "update scheduled in 10min"
+			}
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
+				Status: metav1.ConditionTrue, Reason: "reboot", Message: message})
+
 		case "Failed":
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
 				Status: metav1.ConditionTrue, Reason: "update", Message: r.fetchPodLogs(ctx, pod)})
@@ -317,4 +331,21 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 		return nil, err
 	}
 	return pod, nil
+}
+
+func (r *NodeUpdateReconciler) scheduleNodeRestart(ctx context.Context, update *updatemanagerv1alpha1.NodeUpdate) error {
+	node := &corev1.Node{}
+	if err := r.Get(ctx, types.NamespacedName{Name: update.Name}, node); err != nil {
+		return err
+	}
+
+	node.Spec.Unschedulable = true
+	node.Spec.Taints = []corev1.Taint{
+		{Key: "node.kubernetes.io/unschedulable", Value: "NoSchedule"},
+	}
+
+	if err := r.Update(ctx, node); err != nil {
+		return err
+	}
+	return nil
 }
