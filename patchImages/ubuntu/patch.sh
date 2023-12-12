@@ -30,4 +30,8 @@ fi
 echo upgrade all packages
 chroot /host su - root -c "apt-get upgrade -y"
 
+echo reboot system in 10min
+
+chroot /host su - root -c "sudo shutdown -r +10"
+
 
