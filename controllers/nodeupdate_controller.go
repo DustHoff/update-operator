@@ -143,18 +143,18 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", nodeUpdate.Name)})
 
 			if err := r.Status().Update(ctx, nodeUpdate); err != nil {
-				log.Error(err, "Failed to update Memcached status")
+				log.Error(err, "Failed to update status")
 				return ctrl.Result{}, err
 			}
 
-			log.Info("Removing Finalizer for Memcached after successfully perform the operations")
+			log.Info("Removing Finalizer after successfully perform the operations")
 			if ok := controllerutil.RemoveFinalizer(nodeUpdate, finalizer); !ok {
-				log.Error(err, "Failed to remove finalizer for Memcached")
+				log.Error(err, "Failed to remove finalizer")
 				return ctrl.Result{Requeue: true}, nil
 			}
 
 			if err := r.Update(ctx, nodeUpdate); err != nil {
-				log.Error(err, "Failed to remove finalizer for Memcached")
+				log.Error(err, "Failed to remove finalizer")
 				return ctrl.Result{}, err
 			}
 		}
@@ -344,7 +344,11 @@ func (r *NodeUpdateReconciler) scheduleNodeRestart(ctx context.Context, update *
 		{Key: "node.kubernetes.io/unschedulable", Value: "NoSchedule"},
 	}
 
+	update.Annotations["updatemanager.onesi.de/reboot"] = ""
 	if err := r.Update(ctx, node); err != nil {
+		return err
+	}
+	if err := r.Update(ctx, update); err != nil {
 		return err
 	}
 	return nil
