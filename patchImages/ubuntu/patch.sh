@@ -13,25 +13,25 @@ cp /patch/source/crio.list   /host/etc/apt/sources.list.d/crio.list
 cp -r /patch/keyrings         /host/usr/share/keyrings
 
 echo fetch new updates from repositories
-chroot /host su - root -c 'apt-get update'
+chroot /host su - root -l -c 'apt-get update'
 
 if [ -n "${HOLDPKG}" ]
 then
   echo hold specified packages: ${HOLDPKG}
-  chroot /host su - root -c "apt-mark hold ${HOLDPKG}"
+  chroot /host su - root -l -c "apt-mark hold ${HOLDPKG}"
 fi
 
 if [ -n "${INSTALLPKG}" ]
 then
   echo force install specified packages: ${INSTALLPKG}
-  chroot /host su - root -c "apt-get install -y ${INSTALLPKG}"
+  chroot /host su - root -l -c "apt-get install -y ${INSTALLPKG}"
 fi
 
 echo upgrade all packages
-chroot /host su - root -c "apt-get upgrade -y"
+chroot /host su - root -l -c "apt-get upgrade -y"
 
 echo reboot system in 10min
 
-chroot /host su - root -c "sudo shutdown -r +10"
+chroot /host su - root -l -c "sudo shutdown -r +10"
 
 
