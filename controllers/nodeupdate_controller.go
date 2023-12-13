@@ -343,7 +343,9 @@ func (r *NodeUpdateReconciler) scheduleNodeRestart(ctx context.Context, update *
 	node.Spec.Taints = []corev1.Taint{
 		{Key: "node.kubernetes.io/unschedulable", Value: "NoSchedule"},
 	}
-
+	if update.Annotations == nil {
+		update.Annotations = make(map[string]string)
+	}
 	update.Annotations["updatemanager.onesi.de/reboot"] = ""
 	if err := r.Update(ctx, node); err != nil {
 		return err
