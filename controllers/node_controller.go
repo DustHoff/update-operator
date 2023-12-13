@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"github.com/DustHoff/update-operator/api/v1alpha1"
+	"github.com/DustHoff/update-operator/controllers/helper"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,6 +96,20 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		if err = n.Update(ctx, found); err != nil {
 			log.Error(err, "Failed to Update node update resource")
 			return ctrl.Result{}, err
+		}
+	}
+
+	if _, trigger := found.Annotations["updatemanager.onesi.de/reboot"]; trigger && node.Spec.Unschedulable {
+		log.Info("found node with scheduled reboot")
+		if !helper.KubletReadyCondition(node.Status.Conditions) {
+			log.Info("node currently not available, remove taints")
+			node.Spec.Unschedulable = false
+			node.Spec.Taints = nil
+			found.Annotations["updatemanager.onesi.de/reboot"] = "done"
+			if err := n.Update(ctx, node); err != nil {
+				log.Error(err, "failed to remove node taints")
+				return ctrl.Result{}, err
+			}
 		}
 	}
 	return ctrl.Result{RequeueAfter: time.Minute}, nil

@@ -156,17 +156,16 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
 			//node update not initialized yet
 			log.Info("initializing update process for " + item.Name)
-			clone := item.DeepCopy()
-			if clone.Labels == nil {
-				clone.Labels = make(map[string]string)
+			if item.Labels == nil {
+				item.Labels = make(map[string]string)
 			}
-			clone.Labels["updatemanager.onesi.de/execution"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
-			if clone.Annotations == nil {
-				clone.Annotations = make(map[string]string)
+			item.Labels["updatemanager.onesi.de/execution"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
+			if item.Annotations == nil {
+				item.Annotations = make(map[string]string)
 			}
-			clone.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
+			item.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
 
-			if err := r.Update(ctx, clone); err != nil {
+			if err := r.Update(ctx, &item); err != nil {
 				log.Error(err, "failed to label and annotate node update")
 				return false, err
 			}
@@ -184,7 +183,23 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 				log.Error(err, "Something went wrong during node update")
 				return false, err
 			case "Succeeded":
-				continue
+				if value, trigger := item.Annotations["updatemanager.onesi.de/reboot"]; trigger {
+					if value == "done" {
+						log.Info(item.Name + " has been restarted")
+						delete(item.Annotations, "updatemanager.onesi.de/reboot")
+						if err := r.Update(ctx, &item); err != nil {
+							log.Error(err, "failed to remove reboot annotation")
+							return false, nil
+						}
+						continue
+					} else {
+						log.Info(item.Name + " reboot is scheduled, but not jet done. waiting for completion")
+						return false, nil
+					}
+				} else {
+					log.Info("reboot not jet scheduled, wait")
+					return false, nil
+				}
 			default:
 				log.Info("update not finished yet on index " + strconv.Itoa(index))
 				return false, nil
