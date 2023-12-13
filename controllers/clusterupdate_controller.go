@@ -164,6 +164,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 				item.Annotations = make(map[string]string)
 			}
 			item.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
+			delete(item.Annotations, "updatemanager.onesi.de/reboot")
 
 			if err := r.Update(ctx, &item); err != nil {
 				log.Error(err, "failed to label and annotate node update")
