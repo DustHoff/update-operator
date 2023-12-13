@@ -30,6 +30,7 @@ rules:
   resources:
   - pods/status
   - pods/log
+  - nodes
   verbs:
   - get
   - patch
