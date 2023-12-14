@@ -12,6 +12,8 @@ rules:
   verbs:
   - get
   - list
+  - update
+  - patch
   - watch
 - apiGroups:
   - ""
@@ -30,7 +32,6 @@ rules:
   resources:
   - pods/status
   - pods/log
-  - nodes
   verbs:
   - get
   - patch
