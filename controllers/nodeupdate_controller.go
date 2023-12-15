@@ -190,7 +190,7 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				Status: metav1.ConditionTrue, Reason: "update", Message: "POD is in running state"})
 		case "Succeeded":
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "update", Message: r.fetchPodLogs(ctx, pod)})
+				Status: metav1.ConditionTrue, Reason: "update", Message: "node update has succeeded"})
 			if err := r.Status().Update(ctx, nodeUpdate); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -207,7 +207,7 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 		case "Failed":
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
-				Status: metav1.ConditionTrue, Reason: "update", Message: r.fetchPodLogs(ctx, pod)})
+				Status: metav1.ConditionTrue, Reason: "update", Message: "node update failed"})
 		default:
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
 				Status: metav1.ConditionFalse, Reason: "unknown", Message: "POD is in unknown state"})
