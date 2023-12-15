@@ -216,6 +216,7 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 	//https://stackoverflow.com/questions/53852530/how-to-get-logs-from-kubernetes-using-go
 	return ctrl.Result{}, nil
@@ -349,9 +350,11 @@ func (r *NodeUpdateReconciler) scheduleNodeRestart(ctx context.Context, update *
 	}
 	update.Annotations["updatemanager.onesi.de/reboot"] = ""
 	if err := r.Update(ctx, node); err != nil {
+		log.FromContext(ctx).Error(err, "failed to trigger pod eviction on node "+node.Name)
 		return err
 	}
 	if err := r.Update(ctx, update); err != nil {
+		log.FromContext(ctx).Error(err, "failed to nodeupdate "+update.Name)
 		return err
 	}
 	return nil
