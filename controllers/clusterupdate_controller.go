@@ -111,6 +111,10 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, err
 		}
 		finished, err := r.executeNodeUpdateFlow(ctx, nodeUpdateList, clusterUpdate)
+		if err != nil {
+			log.Info("remove next schedule")
+			clusterUpdate.Status.NextNodeUpdate = 0
+		}
 		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionTrue, Reason: "Update", Message: "Running Node Update"})
 		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
 			log.Error(err, "Failed to update node update status")
@@ -148,10 +152,11 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 	}
 	items := list.Items
 	sort.SliceStable(items, func(i, j int) bool {
+		log.Info(items[i].Name + "(" + strconv.FormatInt(int64(items[i].Spec.Priority), 10) + ")>" + items[j].Name + "(" + strconv.FormatInt(int64(items[j].Spec.Priority), 10) + ")")
 		return items[i].Spec.Priority > items[i].Spec.Priority
 	})
 	for index, item := range items {
-		log.Info(item.Name + " identified as " + strconv.Itoa(index) + " element")
+		log.Info(item.Name + " identified as " + strconv.Itoa(index+1) + " element")
 		//check if the node update has already been executed
 		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
 			//node update not initialized yet
@@ -179,9 +184,12 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 			}
 			switch pod.Status.Phase {
 			case "Failed":
-				//TODO: Fetch pod logs
 				err := errors.New("error during node update")
 				log.Error(err, "Something went wrong during node update")
+				update.Spec.Update.Disabled = true
+				if err := r.Update(ctx, update); err != nil {
+					log.Info("failed to disable update scheduling")
+				}
 				return false, err
 			case "Succeeded":
 				if value, trigger := item.Annotations["updatemanager.onesi.de/reboot"]; trigger {
@@ -202,7 +210,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 					return false, nil
 				}
 			default:
-				log.Info("update not finished yet on index " + strconv.Itoa(index))
+				log.Info("update not finished yet on index " + strconv.Itoa(index+1))
 				return false, nil
 			}
 		}
