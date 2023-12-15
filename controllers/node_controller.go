@@ -23,10 +23,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"time"
-
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -110,9 +108,13 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				log.Error(err, "failed to remove node taints")
 				return ctrl.Result{}, err
 			}
+			if err := n.Update(ctx, found); err != nil {
+				log.Error(err, "failed to update nodeupdate")
+				return ctrl.Result{}, err
+			}
 		}
 	}
-	return ctrl.Result{RequeueAfter: time.Minute}, nil
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
