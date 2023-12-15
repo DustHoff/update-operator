@@ -342,7 +342,7 @@ func (r *NodeUpdateReconciler) scheduleNodeRestart(ctx context.Context, update *
 
 	node.Spec.Unschedulable = true
 	node.Spec.Taints = []corev1.Taint{
-		{Key: "node.kubernetes.io/unschedulable", Value: "NoSchedule"},
+		{Key: "node.kubernetes.io/unschedulable", Value: "NoSchedule", Effect: corev1.TaintEffectNoExecute},
 	}
 	if update.Annotations == nil {
 		update.Annotations = make(map[string]string)
