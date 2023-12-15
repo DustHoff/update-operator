@@ -83,7 +83,7 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	if clusterUpdate.Spec.Update.Schedule == "" {
 		log.Info("missing schedule definition")
-		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeDegraded, Status: metav1.ConditionTrue, Reason: "Reconciling", Message: "missing node update schedule"})
+		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting, Status: metav1.ConditionTrue, Reason: "Reconciling", Message: "missing node update schedule"})
 		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
 			log.Error(err, "Failed to update node update status")
 			return ctrl.Result{}, err
@@ -114,8 +114,11 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err != nil {
 			log.Info("remove next schedule")
 			clusterUpdate.Status.NextNodeUpdate = 0
+			meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeDegraded, Status: metav1.ConditionTrue, Reason: "Update", Message: "Node Update failed"})
+
+		} else {
+			meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionTrue, Reason: "Update", Message: "Running Node Update"})
 		}
-		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionTrue, Reason: "Update", Message: "Running Node Update"})
 		if err = r.Status().Update(ctx, clusterUpdate); err != nil {
 			log.Error(err, "Failed to update node update status")
 			return ctrl.Result{}, err
