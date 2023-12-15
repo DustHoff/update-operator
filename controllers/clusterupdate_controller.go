@@ -79,7 +79,7 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if clusterUpdate.Spec.Update.Disabled {
 		log.Info("node update has been disabled by cluster update definition")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return ctrl.Result{}, nil
 	}
 	if clusterUpdate.Spec.Update.Schedule == "" {
 		log.Info("missing schedule definition")
@@ -88,7 +88,7 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			log.Error(err, "Failed to update node update status")
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
+		return ctrl.Result{}, nil
 	}
 	if clusterUpdate.Status.NextNodeUpdate == 0 {
 		log.Info("evaluating next node update schedule time")
