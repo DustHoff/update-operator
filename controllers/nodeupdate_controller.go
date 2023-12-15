@@ -282,6 +282,7 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 			},
 		},
 		Spec: corev1.PodSpec{
+			HostPID:     true,
 			HostNetwork: true,
 			NodeSelector: map[string]string{
 				"kubernetes.io/hostname": update.Name,
