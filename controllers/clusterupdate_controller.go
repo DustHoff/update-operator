@@ -184,12 +184,12 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 			}
 			switch pod.Status.Phase {
 			case "Failed":
-				err := errors.New("error during node update")
-				log.Error(err, "Something went wrong during node update")
+				log.Info("Something went wrong during node update")
 				update.Spec.Update.Disabled = true
 				if err := r.Update(ctx, update); err != nil {
 					log.Info("failed to disable update scheduling")
 				}
+				err := errors.New("error during node update")
 				return false, err
 			case "Succeeded":
 				if value, trigger := item.Annotations["updatemanager.onesi.de/reboot"]; trigger {
