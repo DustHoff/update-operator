@@ -27,6 +27,9 @@ then
   chroot /host su - root -l -c "DEBIAN_FRONTEND=noninteractive apt-get install -y ${INSTALLPKG}"
 fi
 
+echo remove old packages
+chroot /host su - root -l -c "DEBIAN_FRONTEND=noninteractive apt-get autoremove -y"
+
 echo upgrade all packages
 chroot /host su - root -l -c "DEBIAN_FRONTEND=noninteractive apt-get upgrade -y"
 
