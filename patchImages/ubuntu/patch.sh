@@ -13,7 +13,7 @@ cp /patch/source/crio.list   /host/etc/apt/sources.list.d/crio.list
 cp -r /patch/keyrings         /host/usr/share/keyrings
 
 echo fetch new updates from repositories
-apt-get -o Dir=/host update
+chroot /host su - root -l -c 'apt-get update'
 
 if [ -n "${HOLDPKG}" ]
 then
@@ -24,11 +24,11 @@ fi
 if [ -n "${INSTALLPKG}" ]
 then
   echo force install specified packages: ${INSTALLPKG}
-  apt-get -o Dir=/host install -y ${INSTALLPKG}
+  chroot /host su - root -l -c "DEBIAN_FRONTEND=noninteractive apt-get install -y ${INSTALLPKG}"
 fi
 
 echo upgrade all packages
-apt-get -o Dir=/host upgrade -y
+chroot /host su - root -l -c "DEBIAN_FRONTEND=noninteractive apt-get upgrade -y"
 
 echo reboot system in 10min
 chroot /host su - root -l -c "sudo shutdown -r +10"

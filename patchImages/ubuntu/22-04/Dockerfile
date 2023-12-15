@@ -11,7 +11,6 @@ RUN mkdir -p /patch/source
 COPY ./22-04/${TARGETARCH}/ubuntu.list    /patch/source/ubuntu.list
 COPY ./22-04/${TARGETARCH}/crio.list      /patch/source/crio.list
 COPY ./22-04/${TARGETARCH}/keyrings       /patch/keyrings
-COPY ./22-04/${TARGETARCH}/keyrings       /usr/share/keyrings
 COPY --chmod=775 patch.sh /patch/patch.sh
 
 USER 0
