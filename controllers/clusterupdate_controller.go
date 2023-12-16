@@ -160,6 +160,12 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 	})
 	for index, item := range items {
 		log.Info(item.Name + " identified as " + strconv.Itoa(index+1) + " element")
+		if value, found := item.Labels["updatemanager.onesi.de/completed"]; found {
+			if value == strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
+				log.Info(item.Name + " has already finished update, skip")
+				continue
+			}
+		}
 		//check if the node update has already been executed
 		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
 			//node update not initialized yet
@@ -198,6 +204,7 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 				if value, trigger := item.Annotations["updatemanager.onesi.de/reboot"]; trigger {
 					if value == "done" {
 						log.Info(item.Name + " has been restarted")
+						item.Labels["updatemanager.onesi.de/completed"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
 						delete(item.Annotations, "updatemanager.onesi.de/reboot")
 						if err := r.Update(ctx, &item); err != nil {
 							log.Error(err, "failed to remove reboot annotation")
