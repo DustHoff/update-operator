@@ -19,13 +19,13 @@ package controllers
 import (
 	"context"
 	"errors"
+	"github.com/DustHoff/update-operator/controllers/helper"
 	"github.com/gorhill/cronexpr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sort"
 	"strconv"
 	"time"
 
@@ -153,11 +153,8 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 			return false, errors.New("Unsupported Priority for node " + item.Name + ". lowest node priority is 1")
 		}
 	}
-	items := list.Items
-	sort.SliceStable(items, func(i, j int) bool {
-		log.Info(items[i].Name + "(" + strconv.FormatInt(int64(items[i].Spec.Priority), 10) + ")>" + items[j].Name + "(" + strconv.FormatInt(int64(items[j].Spec.Priority), 10) + ")")
-		return items[i].Spec.Priority > items[i].Spec.Priority
-	})
+	items := helper.QuickSort(list.Items)
+
 	for index, item := range items {
 		log.Info(item.Name + " identified as " + strconv.Itoa(index+1) + " element")
 		if value, found := item.Labels["updatemanager.onesi.de/completed"]; found {
