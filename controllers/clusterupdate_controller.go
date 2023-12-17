@@ -41,7 +41,6 @@ const (
 	typeReconcile = "Reconcile"
 	typeAvailable = "Available"
 	typeDegraded  = "Degraded"
-	typeStopped   = "Stopped"
 )
 
 // NodeReconciler reconciles a ClusterUpdate object
