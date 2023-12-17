@@ -103,6 +103,7 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			log.Info("node currently not available, remove taints")
 			node.Spec.Unschedulable = false
 			node.Spec.Taints = nil
+			found.Labels["updatemanager.onesi.de/state"] = "completed"
 			found.Annotations["updatemanager.onesi.de/reboot"] = "done"
 			if err := n.Update(ctx, node); err != nil {
 				log.Error(err, "failed to remove node taints")

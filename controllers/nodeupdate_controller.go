@@ -17,25 +17,19 @@ limitations under the License.
 package controllers
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"strings"
-	"time"
-
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strings"
 
 	updatemanagerv1alpha1 "github.com/DustHoff/update-operator/api/v1alpha1"
 )
@@ -138,7 +132,6 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				log.Error(err, "Failed to re-fetch node update")
 				return ctrl.Result{}, err
 			}
-			//TODO: cleanup update pods
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeStopped,
 				Status: metav1.ConditionTrue, Reason: "Finalizing",
 				Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", nodeUpdate.Name)})
@@ -178,45 +171,8 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				delete(nodeUpdate.Annotations, "updatemanager.onesi.de/execute")
 				r.Update(ctx, nodeUpdate)
 			}
-			return ctrl.Result{RequeueAfter: time.Minute}, nil
+			return ctrl.Result{}, nil
 		}
-		log.Info("update pod for node " + nodeUpdate.Name + " is in " + string(pod.Status.Phase))
-		switch pod.Status.Phase {
-		case "Pending":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "prepare", Message: "POD is in pending state"})
-		case "Running":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "update", Message: "POD is in running state"})
-		case "Succeeded":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "update", Message: "node update has succeeded"})
-			if err := r.Status().Update(ctx, nodeUpdate); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			err := r.scheduleNodeRestart(ctx, nodeUpdate)
-			message := ""
-			if err != nil {
-				message = err.Error()
-			} else {
-				message = "update scheduled in 10min"
-			}
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
-				Status: metav1.ConditionTrue, Reason: "reboot", Message: message})
-
-		case "Failed":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
-				Status: metav1.ConditionTrue, Reason: "update", Message: "node update failed"})
-		default:
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionFalse, Reason: "unknown", Message: "POD is in unknown state"})
-
-		}
-		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 	//https://stackoverflow.com/questions/53852530/how-to-get-logs-from-kubernetes-using-go
 	return ctrl.Result{}, nil
@@ -227,39 +183,6 @@ func (r *NodeUpdateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&updatemanagerv1alpha1.NodeUpdate{}).
 		Complete(r)
-}
-
-func (r *NodeUpdateReconciler) fetchPodLogs(ctx context.Context, pod *corev1.Pod) string {
-	log := log.FromContext(ctx)
-	log.Info("try to fetch pod logs")
-	podLogOpts := corev1.PodLogOptions{}
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		log.Error(err, "error while config")
-		return "error in getting config"
-	}
-	// creates the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Error(err, "error while config")
-		return "error in getting access to K8S"
-	}
-	req := clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &podLogOpts)
-
-	podLogs, err := req.Stream(ctx)
-	if err != nil {
-		log.Error(err, "error in opening stream")
-		return "error in opening stream"
-	}
-	defer podLogs.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, podLogs)
-	if err != nil {
-		return "error in copy information from podLogs to buf"
-	}
-	str := buf.String()
-	return str
 }
 
 func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1.NodeUpdate) (*corev1.Pod, error) {
@@ -277,6 +200,9 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      update.Name + "-" + update.Labels["updatemanager.onesi.de/execution"],
 			Namespace: update.Namespace,
+			Labels: map[string]string{
+				"updatemanager.onesi.de/execution": update.Labels["updatemanager.onesi.de/execution"],
+			},
 			Annotations: map[string]string{
 				"container.apparmor.security.beta.kubernetes.io/update": "unconfined",
 			},
@@ -335,29 +261,4 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 		return nil, err
 	}
 	return pod, nil
-}
-
-func (r *NodeUpdateReconciler) scheduleNodeRestart(ctx context.Context, update *updatemanagerv1alpha1.NodeUpdate) error {
-	node := &corev1.Node{}
-	if err := r.Get(ctx, types.NamespacedName{Name: update.Name}, node); err != nil {
-		return err
-	}
-
-	node.Spec.Unschedulable = true
-	node.Spec.Taints = []corev1.Taint{
-		{Key: "node.kubernetes.io/unschedulable", Value: "NoSchedule", Effect: corev1.TaintEffectNoExecute},
-	}
-	if update.Annotations == nil {
-		update.Annotations = make(map[string]string)
-	}
-	update.Annotations["updatemanager.onesi.de/reboot"] = ""
-	if err := r.Update(ctx, node); err != nil {
-		log.FromContext(ctx).Error(err, "failed to trigger pod eviction on node "+node.Name)
-		return err
-	}
-	if err := r.Update(ctx, update); err != nil {
-		log.FromContext(ctx).Error(err, "failed to nodeupdate "+update.Name)
-		return err
-	}
-	return nil
 }
