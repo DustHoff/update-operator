@@ -288,7 +288,7 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 				"kubernetes.io/hostname": update.Name,
 			},
 			Tolerations: []corev1.Toleration{
-				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoSchedule},
+				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoExecute},
 			},
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsNonRoot: &[]bool{false}[0],
