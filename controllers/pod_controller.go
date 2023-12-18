@@ -70,12 +70,17 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, nil
 	}
 
-	_, ok := pod.Labels["updatemanager.onesi.de/execution"]
+	execution, ok := pod.Labels["updatemanager.onesi.de/execution"]
 	if ok {
 		log.Info("found node update pod")
 		nodeUpdate := &updatemanagerv1alpha1.NodeUpdate{}
 		if err := r.Get(ctx, types.NamespacedName{Name: pod.OwnerReferences[0].Name, Namespace: pod.Namespace}, nodeUpdate); err != nil {
 			return ctrl.Result{}, err
+		}
+
+		if execution != nodeUpdate.Labels["updatemanager.onesi.de/execution"] {
+			log.Info("found old update pod. skipping")
+			return ctrl.Result{}, nil
 		}
 
 		switch pod.Status.Phase {
