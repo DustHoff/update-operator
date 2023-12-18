@@ -106,6 +106,8 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else {
+		log.Info("next node update on " + time.Unix(0, clusterUpdate.Status.NextNodeUpdate).String())
 	}
 	if time.Now().Round(time.Minute).Equal(time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)) || time.Now().Round(time.Minute).After(time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)) {
 		log.Info("start node update process")
