@@ -21,12 +21,20 @@ func QuickSort(arr []v1alpha1.NodeUpdate) []v1alpha1.NodeUpdate {
 
 	// iterate till i and j are not passed each other
 	for i < j {
-		for (arr[i].Spec.Priority > pivot.Spec.Priority) && (i < len(arr)) {
-			i++
+		for i < len(arr) {
+			if arr[i].Spec.Priority < pivot.Spec.Priority {
+				i++
+			} else {
+				break
+			}
 		}
 
-		for (arr[j].Spec.Priority < pivot.Spec.Priority) && j > 0 {
-			j--
+		for j > 0 {
+			if arr[j].Spec.Priority > pivot.Spec.Priority {
+				j--
+			} else {
+				break
+			}
 		}
 
 		// if i is less than j
