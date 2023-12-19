@@ -13,11 +13,9 @@ func QuickSort(arr []v1alpha1.NodeUpdate) []v1alpha1.NodeUpdate {
 	// make the first element as pivot
 	pivot := arr[0]
 
-	// i will move in right direction (away from pivot) from index position 1
-	i := 1
+	i := len(arr) - 1
 
-	// j will move in left direction (towards pivot) from the last element of the array
-	j := len(arr) - 1
+	j := 1
 
 	// iterate till i and j are not passed each other
 	for i < j {
