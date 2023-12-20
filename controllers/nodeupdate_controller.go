@@ -85,7 +85,6 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Error(err, "Failed to get NodeUpdate")
 		return ctrl.Result{}, err
 	}
-	log.Info("checking node update " + nodeUpdate.Name)
 	if nodeUpdate.Status.Conditions == nil || len(nodeUpdate.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
 		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
