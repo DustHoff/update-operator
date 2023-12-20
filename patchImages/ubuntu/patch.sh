@@ -34,6 +34,6 @@ echo upgrade all packages
 chroot /host su - root -l -c "DEBIAN_FRONTEND=noninteractive apt-get upgrade -y"
 
 echo reboot system in 10min
-chroot /host su - root -l -c "sudo shutdown -r +10"
+chroot /host su - root -l -c "sudo shutdown -r +5"
 
 
