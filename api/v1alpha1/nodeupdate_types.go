@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sort"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -52,13 +53,26 @@ type NodeUpdate struct {
 	Status NodeUpdateStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
+var _ sort.Interface = &NodeUpdateList{}
 
 // NodeUpdateList contains a list of NodeUpdate
 type NodeUpdateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []NodeUpdate `json:"items"`
+}
+
+func (n *NodeUpdateList) Len() int {
+	return len(n.Items)
+}
+
+func (n *NodeUpdateList) Less(i, j int) bool {
+	return n.Items[i].Spec.Priority < n.Items[j].Spec.Priority
+}
+
+func (n *NodeUpdateList) Swap(i, j int) {
+	n.Items[j], n.Items[i] = n.Items[i], n.Items[j]
 }
 
 type NodeUpdatePackages struct {
