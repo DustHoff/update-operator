@@ -103,7 +103,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			if err != nil {
 				message = err.Error()
 			} else {
-				message = "update scheduled in 10min"
+				message = "restart scheduled"
 			}
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
 				Status: metav1.ConditionTrue, Reason: "reboot", Message: message})
