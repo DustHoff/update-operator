@@ -168,7 +168,9 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					log.Error(err, "failed to create patch")
 				}
 				delete(nodeUpdate.Annotations, "updatemanager.onesi.de/execute")
-				r.Update(ctx, nodeUpdate)
+				if err := r.Update(ctx, nodeUpdate); err != nil {
+					return ctrl.Result{}, err
+				}
 			}
 			return ctrl.Result{}, nil
 		}
