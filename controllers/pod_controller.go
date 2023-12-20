@@ -109,7 +109,6 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 				Status: metav1.ConditionTrue, Reason: "reboot", Message: message})
 
 		case "Failed":
-			nodeUpdate.Labels["updatemanager.onesi.de/state"] = "failed"
 			r.Update(ctx, nodeUpdate)
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
 				Status: metav1.ConditionTrue, Reason: "update", Message: "node update failed"})
@@ -118,6 +117,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 				Status: metav1.ConditionFalse, Reason: "unknown", Message: "POD is in unknown state"})
 
 		}
+		nodeUpdate.Labels["updatemanager.onesi.de/state"] = string(pod.Status.Phase)
 		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -145,7 +145,6 @@ func (r *PodReconciler) scheduleNodeRestart(ctx context.Context, update *updatem
 	if update.Annotations == nil {
 		update.Annotations = make(map[string]string)
 	}
-	update.Labels["updatemanager.onesi.de/state"] = "Succeeded"
 	update.Annotations["updatemanager.onesi.de/reboot"] = ""
 	if err := r.Update(ctx, node); err != nil {
 		log.FromContext(ctx).Error(err, "failed to trigger pod eviction on node "+node.Name)

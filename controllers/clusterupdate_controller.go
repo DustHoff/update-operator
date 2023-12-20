@@ -166,73 +166,72 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 
 	for index, item := range list.Items {
 		log.Info(item.Name + " identified as " + strconv.Itoa(index+1) + " element")
-		/*		if value, found := item.Labels["updatemanager.onesi.de/completed"]; found {
-					if value == strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
-						log.Info(item.Name + " has already finished update, skip")
-						continue
-					}
-				}
-				//check if the node update has already been executed
-				if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
-					//node update not initialized yet
-					log.Info("initializing update process for " + item.Name)
-					if item.Labels == nil {
-						item.Labels = make(map[string]string)
-					}
-					item.Labels["updatemanager.onesi.de/execution"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
-					item.Labels["updatemanager.onesi.de/state"] = "initialized"
-					if item.Annotations == nil {
-						item.Annotations = make(map[string]string)
-					}
-					item.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
-					delete(item.Annotations, "updatemanager.onesi.de/reboot")
+		//check if the node update has already been executed
+		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
+			//node update not initialized yet
+			log.Info("initializing update process for " + item.Name)
+			if item.Labels == nil {
+				item.Labels = make(map[string]string)
+			}
+			item.Labels["updatemanager.onesi.de/execution"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
+			item.Labels["updatemanager.onesi.de/state"] = "initialized"
+			if item.Annotations == nil {
+				item.Annotations = make(map[string]string)
+			}
+			item.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
+			delete(item.Annotations, "updatemanager.onesi.de/reboot")
 
-					if err := r.Update(ctx, &item); err != nil {
-						log.Error(err, "failed to label and annotate node update")
-						return false, err
+			if err := r.Update(ctx, &item); err != nil {
+				log.Error(err, "failed to label and annotate node update")
+				return false, err
+			}
+			return false, nil
+		} else {
+			if completed, cmp := item.Labels["updatemanager.onesi.de/completed"]; cmp {
+				if completed == strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
+					continue
+				}
+			}
+			if label, ok := item.Labels["updatemanager.onesi.de/state"]; ok {
+				switch label {
+				case "Failed":
+					log.Info("Something went wrong during node update")
+					update.Spec.Update.Disabled = true
+					if err := r.Update(ctx, update); err != nil {
+						log.Info("failed to disable update scheduling")
 					}
-					return false, nil
-				} else {
-					if label, ok := item.Labels["updatemanager.onesi.de/state"]; ok {
-						switch label {
-						case "Failed":
-							log.Info("Something went wrong during node update")
-							update.Spec.Update.Disabled = true
-							if err := r.Update(ctx, update); err != nil {
-								log.Info("failed to disable update scheduling")
-							}
-							err := errors.New("error during node update")
-							return false, err
-						case "Succeeded":
-							if value, trigger := item.Annotations["updatemanager.onesi.de/reboot"]; trigger {
-								if value == "done" {
-									log.Info(item.Name + " has been restarted")
-									item.Labels["updatemanager.onesi.de/completed"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
-									delete(item.Annotations, "updatemanager.onesi.de/reboot")
-									if err := r.Update(ctx, &item); err != nil {
-										log.Error(err, "failed to remove reboot annotation")
-										return false, nil
-									}
-									continue
-								} else {
-									log.Info(item.Name + " reboot is scheduled, but not jet done. waiting for completion")
-									return false, nil
-								}
-							} else {
-								log.Info("reboot not jet scheduled, wait")
+					err := errors.New("error during node update")
+					return false, err
+				case "Succeeded":
+					if value, trigger := item.Annotations["updatemanager.onesi.de/reboot"]; trigger {
+						if value == "done" {
+							log.Info(item.Name + " has been restarted")
+							item.Labels["updatemanager.onesi.de/completed"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
+							delete(item.Annotations, "updatemanager.onesi.de/reboot")
+							if err := r.Update(ctx, &item); err != nil {
+								log.Error(err, "failed to remove reboot annotation")
 								return false, nil
 							}
-						default:
-							log.Info("update not finished yet on index " + strconv.Itoa(index+1))
+							continue
+						} else {
+							log.Info(item.Name + " reboot is scheduled, but not jet done. waiting for completion")
 							return false, nil
 						}
 					} else {
-						log.Info("state label not found")
+						log.Info("reboot not jet scheduled, wait")
 						return false, nil
 					}
-
+				default:
+					log.Info("update not finished yet on index " + strconv.Itoa(index+1))
+					return false, nil
 				}
-		*/
+			} else {
+				log.Info("state label not found")
+				return false, nil
+			}
+
+		}
+
 	}
 	return true, nil
 }
