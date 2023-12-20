@@ -161,7 +161,6 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 	}
 
 	sort.Sort(list)
-	sort.Reverse(list)
 
 	log.Info("sorted " + strconv.FormatBool(sort.IsSorted(list)))
 
