@@ -103,10 +103,8 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		log.Info("found node with scheduled reboot " + found.Name)
 		ready, condition := helper.KubletReadyCondition(node.Status.Conditions)
 		if condition == nil {
-			log.Info("could not evaluate KubeReady condition, skip")
 			return ctrl.Result{}, nil
 		}
-		log.Info(found.Name + " ready:" + strconv.FormatBool(ready) + " latest transition on:" + condition.LastTransitionTime.String())
 		if !ready {
 			log.Info("node currently not available, remove taints")
 			err := n.removeTaints(ctx, node, found)
