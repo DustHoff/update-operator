@@ -4,11 +4,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func KubletReadyCondition(conditions []corev1.NodeCondition) bool {
+func KubletReadyCondition(conditions []corev1.NodeCondition) (bool, *corev1.NodeCondition) {
 	for _, condition := range conditions {
-		if condition.Type == "Ready" && condition.Status == "True" && condition.Reason == "KubeletReady" {
-			return true
+		if condition.Type == "Ready" && condition.Reason == "KubeletReady" {
+			return condition.Status == "True", &condition
 		}
 	}
-	return false
+	return false, nil
 }
