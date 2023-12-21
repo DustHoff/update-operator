@@ -28,6 +28,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strconv"
+	"time"
 )
 
 // NodeReconciler reconciles a ClusterUpdate object
@@ -98,20 +100,23 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	if _, trigger := found.Annotations["updatemanager.onesi.de/reboot"]; trigger && node.Spec.Unschedulable {
-		log.Info("found node with scheduled reboot")
-		if !helper.KubletReadyCondition(node.Status.Conditions) {
+		log.Info("found node with scheduled reboot " + found.Name)
+		ready, condition := helper.KubletReadyCondition(node.Status.Conditions)
+		log.Info(found.Name + " ready:" + strconv.FormatBool(ready) + " latest transition on:" + condition.LastTransitionTime.String())
+		if !ready {
 			log.Info("node currently not available, remove taints")
-			node.Spec.Unschedulable = false
-			node.Spec.Taints = nil
-			found.Labels["updatemanager.onesi.de/state"] = "completed"
-			found.Annotations["updatemanager.onesi.de/reboot"] = "done"
-			if err := n.Update(ctx, node); err != nil {
-				log.Error(err, "failed to remove node taints")
+			err := n.removeTaints(ctx, node, found)
+			if err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := n.Update(ctx, found); err != nil {
-				log.Error(err, "failed to update nodeupdate")
-				return ctrl.Result{}, err
+		} else {
+			log.Info("Node still available check alternative information")
+			if time.Now().Sub(condition.LastTransitionTime.Time) > 10*time.Minute {
+				log.Info("node is longer than 10min ready, assume fast reboot")
+				err := n.removeTaints(ctx, node, found)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
 			}
 		}
 	}
@@ -134,4 +139,19 @@ func (n *NodeReconciler) generateNodeUpdate(node *v1.Node) (*v1alpha1.NodeUpdate
 		Spec: v1alpha1.NodeUpdateSpec{},
 	}
 	return nodeUpdate, nil
+}
+
+func (n *NodeReconciler) removeTaints(ctx context.Context, node *v1.Node, found *v1alpha1.NodeUpdate) error {
+	node.Spec.Unschedulable = false
+	node.Spec.Taints = nil
+	found.Labels["updatemanager.onesi.de/state"] = "completed"
+	found.Annotations["updatemanager.onesi.de/reboot"] = "done"
+	if err := n.Update(ctx, node); err != nil {
+		return err
+	}
+
+	if err := n.Update(ctx, found); err != nil {
+		return err
+	}
+	return nil
 }
