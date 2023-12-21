@@ -27,8 +27,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strconv"
+	"time"
 
 	updatemanagerv1alpha1 "github.com/DustHoff/update-operator/api/v1alpha1"
+)
+
+const (
+	NodeRebootType string = "Reboot"
 )
 
 // PodReconciler reconciles a NodeUpdate object
@@ -124,16 +130,20 @@ func (r *PodReconciler) scheduleNodeRestart(ctx context.Context, update *updatem
 	node.Spec.Taints = []corev1.Taint{
 		{Key: "node.kubernetes.io/unschedulable", Value: "NoSchedule", Effect: corev1.TaintEffectNoExecute},
 	}
+	if node.Annotations == nil {
+		node.Annotations = make(map[string]string)
+	}
+	node.Annotations["updatemanager.onesi.de/reboot"] = strconv.FormatInt(time.Now().UnixNano(), 10)
 	if update.Annotations == nil {
 		update.Annotations = make(map[string]string)
 	}
 	update.Annotations["updatemanager.onesi.de/reboot"] = ""
-	if err := r.Update(ctx, node); err != nil {
-		log.FromContext(ctx).Error(err, "failed to trigger pod eviction on node "+node.Name)
-		return err
-	}
 	if err := r.Update(ctx, update); err != nil {
 		log.FromContext(ctx).Error(err, "failed to nodeupdate "+update.Name)
+		return err
+	}
+	if err := r.Update(ctx, node); err != nil {
+		log.FromContext(ctx).Error(err, "failed to trigger pod eviction on node "+node.Name)
 		return err
 	}
 	return nil

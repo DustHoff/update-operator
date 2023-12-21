@@ -112,10 +112,19 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		} else {
 			log.Info("Node still available check alternative information")
 			if time.Now().Sub(condition.LastTransitionTime.Time) > 10*time.Minute {
-				log.Info("node is longer than 10min ready, assume fast reboot")
-				err := n.removeTaints(ctx, node, found)
-				if err != nil {
-					return ctrl.Result{}, err
+				log.Info("node is longer than 10min ready, check reboot annotation")
+				if value, ok := node.Annotations["updatemanager.onesi.de/reboot"]; ok {
+					nsec, err := strconv.ParseInt(value, 10, 0)
+					if err != nil {
+						nsec = 0
+					}
+					log.Info("reboot scheduled on " + time.Unix(0, nsec).String())
+					if time.Now().Sub(time.Unix(0, nsec)) > 10*time.Minute {
+						err := n.removeTaints(ctx, node, found)
+						if err != nil {
+							return ctrl.Result{}, err
+						}
+					}
 				}
 			}
 		}
@@ -144,13 +153,16 @@ func (n *NodeReconciler) generateNodeUpdate(node *v1.Node) (*v1alpha1.NodeUpdate
 func (n *NodeReconciler) removeTaints(ctx context.Context, node *v1.Node, found *v1alpha1.NodeUpdate) error {
 	node.Spec.Unschedulable = false
 	node.Spec.Taints = nil
+	if node.Annotations != nil {
+		delete(node.Annotations, "updatemanager.onesi.de/reboot")
+	}
 	found.Labels["updatemanager.onesi.de/state"] = "completed"
 	found.Annotations["updatemanager.onesi.de/reboot"] = "done"
-	if err := n.Update(ctx, node); err != nil {
-		return err
-	}
 
 	if err := n.Update(ctx, found); err != nil {
+		return err
+	}
+	if err := n.Update(ctx, node); err != nil {
 		return err
 	}
 	return nil
