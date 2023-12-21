@@ -102,6 +102,10 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if _, trigger := found.Annotations["updatemanager.onesi.de/reboot"]; trigger && node.Spec.Unschedulable {
 		log.Info("found node with scheduled reboot " + found.Name)
 		ready, condition := helper.KubletReadyCondition(node.Status.Conditions)
+		if condition == nil {
+			log.Info("could not evaluate KubeReady condition, skip")
+			return ctrl.Result{}, nil
+		}
 		log.Info(found.Name + " ready:" + strconv.FormatBool(ready) + " latest transition on:" + condition.LastTransitionTime.String())
 		if !ready {
 			log.Info("node currently not available, remove taints")
@@ -110,20 +114,16 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				return ctrl.Result{}, err
 			}
 		} else {
-			log.Info("Node still available check alternative information")
-			if time.Now().Sub(condition.LastTransitionTime.Time) > 10*time.Minute {
-				log.Info("node is longer than 10min ready, check reboot annotation")
-				if value, ok := node.Annotations["updatemanager.onesi.de/reboot"]; ok {
-					nsec, err := strconv.ParseInt(value, 10, 0)
+			if value, ok := node.Annotations["updatemanager.onesi.de/reboot"]; ok {
+				nsec, err := strconv.ParseInt(value, 10, 0)
+				if err != nil {
+					nsec = 0
+				}
+				if time.Now().Sub(time.Unix(0, nsec)) > 5*time.Minute {
+					log.Info("node available assume safe reboot")
+					err := n.removeTaints(ctx, node, found)
 					if err != nil {
-						nsec = 0
-					}
-					log.Info("reboot scheduled on " + time.Unix(0, nsec).String())
-					if time.Now().Sub(time.Unix(0, nsec)) > 10*time.Minute {
-						err := n.removeTaints(ctx, node, found)
-						if err != nil {
-							return ctrl.Result{}, err
-						}
+						return ctrl.Result{}, err
 					}
 				}
 			}
