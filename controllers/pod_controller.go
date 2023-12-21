@@ -83,42 +83,24 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			return ctrl.Result{}, nil
 		}
 
+		log.Info(nodeUpdate.Name + " update is in state " + string(pod.Status.Phase))
 		switch pod.Status.Phase {
-		case "Pending":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "prepare", Message: "POD is in pending state"})
-		case "Running":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "update", Message: "POD is in running state"})
 		case "Succeeded":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "update", Message: "node update has succeeded"})
-			if err := r.Status().Update(ctx, nodeUpdate); err != nil {
-				return ctrl.Result{}, err
-			}
 
 			log.Info("node update completed, schedule restart")
 			err := r.scheduleNodeRestart(ctx, nodeUpdate)
-			message := ""
 			if err != nil {
-				message = err.Error()
-			} else {
-				message = "restart scheduled"
+				return ctrl.Result{}, err
 			}
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeWaiting,
-				Status: metav1.ConditionTrue, Reason: "reboot", Message: message})
+			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+				Status: metav1.ConditionTrue, Reason: "reboot", Message: "Reboot scheduled"})
 
 		case "Failed":
-			r.Update(ctx, nodeUpdate)
 			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
 				Status: metav1.ConditionTrue, Reason: "update", Message: "node update failed"})
-		default:
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionFalse, Reason: "unknown", Message: "POD is in unknown state"})
-
 		}
 		nodeUpdate.Labels["updatemanager.onesi.de/state"] = string(pod.Status.Phase)
-		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
+		if err = r.Update(ctx, nodeUpdate); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
