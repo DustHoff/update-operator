@@ -156,7 +156,7 @@ func (n *NodeReconciler) removeTaints(ctx context.Context, node *v1.Node, found 
 	if node.Annotations != nil {
 		delete(node.Annotations, "updatemanager.onesi.de/reboot")
 	}
-	found.Labels["updatemanager.onesi.de/state"] = "completed"
+	found.Labels["updatemanager.onesi.de/state"] = "Succeeded"
 	found.Annotations["updatemanager.onesi.de/reboot"] = "done"
 
 	if err := n.Update(ctx, found); err != nil {
