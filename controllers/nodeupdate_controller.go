@@ -19,6 +19,8 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -29,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strings"
 
 	updatemanagerv1alpha1 "github.com/DustHoff/update-operator/api/v1alpha1"
 )
@@ -60,15 +61,6 @@ type NodeUpdateReconciler struct {
 //+kubebuilder:rbac:groups="",resources=pods/log,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;update;patch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the NodeUpdate object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -76,16 +68,13 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	err := r.Get(ctx, req.NamespacedName, nodeUpdate)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// If the custom resource is not found then, it usually means that it was deleted or not created
-			// In this way, we will stop the reconciliation
 			log.Info("NodeUpdate resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get NodeUpdate")
 		return ctrl.Result{}, err
 	}
-	if nodeUpdate.Status.Conditions == nil || len(nodeUpdate.Status.Conditions) == 0 {
+	if len(nodeUpdate.Status.Conditions) == 0 {
 		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
 		if err = r.Status().Update(ctx, nodeUpdate); err != nil {
 			log.Error(err, "Failed to update node update status")
@@ -97,9 +86,7 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 	}
-	// Let's add a finalizer. Then, we can define some operations which should
-	// occurs before the custom resource to be deleted.
-	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers
+
 	if !controllerutil.ContainsFinalizer(nodeUpdate, finalizer) {
 		log.Info("Adding Finalizer for node Update")
 		if ok := controllerutil.AddFinalizer(nodeUpdate, finalizer); !ok {
@@ -112,8 +99,7 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 	}
-	// Check if the nodeUpdate instance is marked to be deleted, which is
-	// indicated by the deletion timestamp being set.
+
 	if nodeUpdate.GetDeletionTimestamp() != nil {
 		if controllerutil.ContainsFinalizer(nodeUpdate, finalizer) {
 			log.Info("Performing Finalizer Operations for node update before delete CR")
@@ -154,18 +140,25 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	execution, ok := nodeUpdate.Labels["updatemanager.onesi.de/execution"]
-	trigger, triggerOk := nodeUpdate.Annotations["updatemanager.onesi.de/execute"]
-	if ok {
-		// found execution label
+	execution, hasExecution := nodeUpdate.Labels["updatemanager.onesi.de/execution"]
+	trigger, hasTrigger := nodeUpdate.Annotations["updatemanager.onesi.de/execute"]
+	if hasExecution {
 		pod := &corev1.Pod{}
 		err = r.Get(ctx, types.NamespacedName{Name: nodeUpdate.Name + "-" + execution, Namespace: nodeUpdate.Namespace}, pod)
 		if err != nil && apierrors.IsNotFound(err) {
-			if triggerOk && trigger == "nodeUpdate" && nodeUpdate.Spec.Image != "" {
+			if hasTrigger && trigger == "nodeUpdate" && nodeUpdate.Spec.Image != "" {
 				log.Info("create node update pod")
-				pod, _ := r.createNodeUpdatePod(nodeUpdate)
+				pod, err := r.createNodeUpdatePod(nodeUpdate)
+				if err != nil {
+					log.Error(err, "failed to build node update pod spec")
+					return ctrl.Result{}, err
+				}
 				if err := r.Create(ctx, pod); err != nil {
-					log.Error(err, "failed to create patch")
+					log.Error(err, "failed to create node update pod")
+					return ctrl.Result{}, err
+				}
+				if nodeUpdate.Annotations == nil {
+					nodeUpdate.Annotations = make(map[string]string)
 				}
 				delete(nodeUpdate.Annotations, "updatemanager.onesi.de/execute")
 				if err := r.Update(ctx, nodeUpdate); err != nil {
@@ -173,9 +166,11 @@ func (r *NodeUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				}
 			}
 			return ctrl.Result{}, nil
+		} else if err != nil {
+			log.Error(err, "failed to get node update pod")
+			return ctrl.Result{}, err
 		}
 	}
-	//https://stackoverflow.com/questions/53852530/how-to-get-logs-from-kubernetes-using-go
 	return ctrl.Result{}, nil
 }
 
@@ -215,8 +210,8 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 				"kubernetes.io/hostname": update.Name,
 			},
 			Tolerations: []corev1.Toleration{
-				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoExecute},
-				corev1.Toleration{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoSchedule},
+				{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoExecute},
+				{Key: "node.kubernetes.io/unschedulable", Operator: corev1.TolerationOpEqual, Effect: corev1.TaintEffectNoSchedule},
 			},
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsNonRoot: &[]bool{false}[0],
@@ -236,14 +231,14 @@ func (r *NodeUpdateReconciler) createNodeUpdatePod(update *updatemanagerv1alpha1
 				},
 				Name:            "update",
 				ImagePullPolicy: corev1.PullAlways,
+				// The update container requires elevated privileges to perform OS-level package
+				// management and host filesystem access. This is intentional and documented.
 				SecurityContext: &corev1.SecurityContext{
 					RunAsNonRoot:             &[]bool{false}[0],
 					RunAsUser:                &[]int64{0}[0],
 					AllowPrivilegeEscalation: &[]bool{true}[0],
 					Capabilities: &corev1.Capabilities{
-						Add: []corev1.Capability{
-							"All",
-						},
+						Add: []corev1.Capability{"ALL"},
 					},
 				},
 				Ports:   []corev1.ContainerPort{},

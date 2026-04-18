@@ -18,6 +18,9 @@ package controllers
 
 import (
 	"context"
+	"strconv"
+	"time"
+
 	"github.com/DustHoff/update-operator/api/v1alpha1"
 	"github.com/DustHoff/update-operator/controllers/helper"
 	v1 "k8s.io/api/core/v1"
@@ -28,11 +31,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strconv"
-	"time"
 )
 
-// NodeReconciler reconciles a ClusterUpdate object
+// NodeReconciler reconciles a Node object and maintains a corresponding NodeUpdate resource.
 type NodeReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
@@ -42,15 +43,6 @@ type NodeReconciler struct {
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=nodeupdates,verbs=get;create;update;list;watch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ClusterUpdate object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	node := &v1.Node{}
@@ -60,7 +52,6 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			log.Info("node resource not found. deleting node update resource")
 			return ctrl.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		log.Error(err, "Failed to get node")
 		return ctrl.Result{}, err
 	}
@@ -74,6 +65,7 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		if err = n.Create(ctx, nodeUpdate); err != nil {
 			log.Error(err, "Failed to create NodeUpdate resource")
+			return ctrl.Result{}, err
 		}
 
 		if err = n.Get(ctx, types.NamespacedName{Name: node.Name, Namespace: n.Namespace}, found); err != nil {
@@ -82,9 +74,9 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 	} else if err != nil {
 		log.Error(err, "Failed to get Node Update")
-		// Let's return the error for the reconciliation be re-trigged again
 		return ctrl.Result{}, err
 	}
+
 	var role string
 	if _, ok := node.ObjectMeta.Labels["node-role.kubernetes.io/control-plane"]; ok {
 		role = "control-plane"
@@ -107,20 +99,20 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		if !ready {
 			log.Info("node currently not available, remove taints")
-			err := n.removeTaints(ctx, node, found)
-			if err != nil {
+			if err := n.removeTaints(ctx, node, found); err != nil {
 				return ctrl.Result{}, err
 			}
 		} else {
 			if value, ok := node.Annotations["updatemanager.onesi.de/reboot"]; ok {
-				nsec, err := strconv.ParseInt(value, 10, 0)
+				nsec, err := strconv.ParseInt(value, 10, 64)
 				if err != nil {
-					nsec = 0
+					// Annotation value is corrupt; skip rather than treating it as epoch time.
+					log.Error(err, "invalid reboot timestamp annotation, skipping", "value", value)
+					return ctrl.Result{}, nil
 				}
-				if time.Now().Sub(time.Unix(0, nsec)) > 5*time.Minute {
+				if time.Since(time.Unix(0, nsec)) > 5*time.Minute {
 					log.Info("node available assume safe reboot")
-					err := n.removeTaints(ctx, node, found)
-					if err != nil {
+					if err := n.removeTaints(ctx, node, found); err != nil {
 						return ctrl.Result{}, err
 					}
 				}
@@ -153,6 +145,13 @@ func (n *NodeReconciler) removeTaints(ctx context.Context, node *v1.Node, found 
 	node.Spec.Taints = nil
 	if node.Annotations != nil {
 		delete(node.Annotations, "updatemanager.onesi.de/reboot")
+	}
+
+	if found.Labels == nil {
+		found.Labels = make(map[string]string)
+	}
+	if found.Annotations == nil {
+		found.Annotations = make(map[string]string)
 	}
 	found.Labels["updatemanager.onesi.de/state"] = "Succeeded"
 	found.Annotations["updatemanager.onesi.de/reboot"] = "done"

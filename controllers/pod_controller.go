@@ -18,6 +18,9 @@ package controllers
 
 import (
 	"context"
+	"strconv"
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -27,8 +30,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strconv"
-	"time"
 
 	updatemanagerv1alpha1 "github.com/DustHoff/update-operator/api/v1alpha1"
 )
@@ -37,7 +38,7 @@ const (
 	NodeRebootType string = "Reboot"
 )
 
-// PodReconciler reconciles a NodeUpdate object
+// PodReconciler reconciles Pods created by NodeUpdateReconciler to track update progress.
 type PodReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -51,15 +52,6 @@ type PodReconciler struct {
 //+kubebuilder:rbac:groups="",resources=pods/log,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=nodes,verbs=get;update;patch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the NodeUpdate object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -77,39 +69,65 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	execution, ok := pod.Labels["updatemanager.onesi.de/execution"]
-	if ok {
-		log.Info("found node update pod")
-		nodeUpdate := &updatemanagerv1alpha1.NodeUpdate{}
-		if err := r.Get(ctx, types.NamespacedName{Name: pod.OwnerReferences[0].Name, Namespace: pod.Namespace}, nodeUpdate); err != nil {
-			return ctrl.Result{}, err
-		}
+	if !ok {
+		return ctrl.Result{}, nil
+	}
 
-		if execution != nodeUpdate.Labels["updatemanager.onesi.de/execution"] {
-			log.Info("found old update pod. skipping")
+	// Validate owner reference before accessing it.
+	if len(pod.OwnerReferences) == 0 {
+		log.Info("update pod has no owner reference, skipping", "pod", pod.Name)
+		return ctrl.Result{}, nil
+	}
+	ownerRef := pod.OwnerReferences[0]
+	if ownerRef.Kind != "NodeUpdate" {
+		log.Info("pod owner is not a NodeUpdate, skipping", "kind", ownerRef.Kind)
+		return ctrl.Result{}, nil
+	}
+
+	log.Info("found node update pod")
+	nodeUpdate := &updatemanagerv1alpha1.NodeUpdate{}
+	if err := r.Get(ctx, types.NamespacedName{Name: ownerRef.Name, Namespace: pod.Namespace}, nodeUpdate); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("owning NodeUpdate no longer exists, skipping", "owner", ownerRef.Name)
 			return ctrl.Result{}, nil
 		}
+		return ctrl.Result{}, err
+	}
 
-		log.Info(nodeUpdate.Name + " update is in state " + string(pod.Status.Phase))
-		switch pod.Status.Phase {
-		case "Succeeded":
+	if execution != nodeUpdate.Labels["updatemanager.onesi.de/execution"] {
+		log.Info("found old update pod. skipping")
+		return ctrl.Result{}, nil
+	}
 
-			log.Info("node update completed, schedule restart")
-			err := r.scheduleNodeRestart(ctx, nodeUpdate)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
-				Status: metav1.ConditionTrue, Reason: "reboot", Message: "Reboot scheduled"})
+	log.Info(nodeUpdate.Name + " update is in state " + string(pod.Status.Phase))
 
-		case "Failed":
-			meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
-				Status: metav1.ConditionTrue, Reason: "update", Message: "node update failed"})
-		}
-		nodeUpdate.Labels["updatemanager.onesi.de/state"] = string(pod.Status.Phase)
-		if err = r.Update(ctx, nodeUpdate); err != nil {
+	// Use typed constants instead of string literals for pod phase comparison.
+	switch pod.Status.Phase {
+	case corev1.PodSucceeded:
+		log.Info("node update completed, schedule restart")
+		if err := r.scheduleNodeRestart(ctx, nodeUpdate); err != nil {
 			return ctrl.Result{}, err
 		}
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing,
+			Status: metav1.ConditionTrue, Reason: "reboot", Message: "Reboot scheduled"})
+
+	case corev1.PodFailed:
+		meta.SetStatusCondition(&nodeUpdate.Status.Conditions, metav1.Condition{Type: typeFailed,
+			Status: metav1.ConditionTrue, Reason: "update", Message: "node update failed"})
+
+	default:
+		// Pod is still running or in another transient phase; nothing to do yet.
+		return ctrl.Result{}, nil
 	}
+
+	if nodeUpdate.Labels == nil {
+		nodeUpdate.Labels = make(map[string]string)
+	}
+	nodeUpdate.Labels["updatemanager.onesi.de/state"] = string(pod.Status.Phase)
+	if err = r.Update(ctx, nodeUpdate); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -139,7 +157,7 @@ func (r *PodReconciler) scheduleNodeRestart(ctx context.Context, update *updatem
 	}
 	update.Annotations["updatemanager.onesi.de/reboot"] = ""
 	if err := r.Update(ctx, update); err != nil {
-		log.FromContext(ctx).Error(err, "failed to nodeupdate "+update.Name)
+		log.FromContext(ctx).Error(err, "failed to update nodeupdate "+update.Name)
 		return err
 	}
 	if err := r.Update(ctx, node); err != nil {
