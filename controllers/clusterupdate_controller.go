@@ -19,14 +19,14 @@ package controllers
 import (
 	"context"
 	"errors"
-	"github.com/gorhill/cronexpr"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.com/gorhill/cronexpr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,7 +41,7 @@ const (
 	typeDegraded  = "Degraded"
 )
 
-// NodeReconciler reconciles a ClusterUpdate object
+// ClusterUpdateReconciler reconciles a ClusterUpdate object
 type ClusterUpdateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -53,14 +53,6 @@ type ClusterUpdateReconciler struct {
 //+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=pods/status,verbs=get;update;patch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// the ClusterUpdate object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -94,10 +86,23 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		return ctrl.Result{}, nil
 	}
+
+	// Validate cron expression before using it to avoid a panic from MustParse.
+	cronExpr, err := cronexpr.Parse(clusterUpdate.Spec.Update.Schedule)
+	if err != nil {
+		log.Error(err, "Invalid cron expression", "schedule", clusterUpdate.Spec.Update.Schedule)
+		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeDegraded, Status: metav1.ConditionTrue, Reason: "InvalidSchedule", Message: "invalid cron expression: " + err.Error()})
+		if statusErr := r.Status().Update(ctx, clusterUpdate); statusErr != nil {
+			log.Error(statusErr, "Failed to update node update status")
+			return ctrl.Result{}, statusErr
+		}
+		return ctrl.Result{}, nil
+	}
+
 	if clusterUpdate.Status.NextNodeUpdate == 0 {
 		log.Info("evaluating next node update schedule time")
 		log.Info("configured schedule is " + clusterUpdate.Spec.Update.Schedule)
-		nextTime := cronexpr.MustParse(clusterUpdate.Spec.Update.Schedule).Next(time.Now())
+		nextTime := cronExpr.Next(time.Now())
 		log.Info("evaluated next run is " + nextTime.String())
 		clusterUpdate.Status.NextNodeUpdate = nextTime.Round(time.Minute).UnixMilli()
 		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "nextExecution", Message: "next node update execution is " + nextTime.String()})
@@ -108,19 +113,21 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	if time.Now().Round(time.Minute).Equal(time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)) || time.Now().Round(time.Minute).After(time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)) {
+	// Capture time.Now() once to avoid a race between two calls in the same condition.
+	now := time.Now().Round(time.Minute)
+	nextUpdate := time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)
+	if now.Equal(nextUpdate) || now.After(nextUpdate) {
 		log.Info("check node update process")
 		nodeUpdateList := &updatemanagerv1alpha1.NodeUpdateList{}
 		if err := r.List(ctx, nodeUpdateList); err != nil {
 			log.Error(err, "failed to fetch node update list")
 			return ctrl.Result{}, err
 		}
-		finished, err := r.executeNodeUpdateFlow(ctx, nodeUpdateList, clusterUpdate)
-		if err != nil {
+		finished, flowErr := r.executeNodeUpdateFlow(ctx, nodeUpdateList, clusterUpdate)
+		if flowErr != nil {
 			log.Info("remove next schedule")
 			clusterUpdate.Status.NextNodeUpdate = 0
 			meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeDegraded, Status: metav1.ConditionTrue, Reason: "Update", Message: "Node Update failed"})
-
 		} else {
 			meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeProcessing, Status: metav1.ConditionTrue, Reason: "Update", Message: "Running Node Update"})
 		}
@@ -130,7 +137,7 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 
 		if finished {
-			nextTime := cronexpr.MustParse(clusterUpdate.Spec.Update.Schedule).Next(time.Now())
+			nextTime := cronExpr.Next(time.Now())
 			log.Info("evaluated next run is " + nextTime.String())
 			clusterUpdate.Status.NextNodeUpdate = nextTime.Round(time.Minute).UnixMilli()
 			meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "nextExecution", Message: "next node update execution is " + nextTime.String()})
@@ -139,7 +146,6 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				return ctrl.Result{}, err
 			}
 		}
-
 	}
 	return ctrl.Result{RequeueAfter: time.Minute}, nil
 }
@@ -161,22 +167,22 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 
 	sort.Sort(list)
 
-	log.Info("sorted " + strconv.FormatBool(sort.IsSorted(list)))
-
 	for index, item := range list.Items {
 		log.Info(item.Name + " identified as " + strconv.Itoa(index+1) + " element")
-		//check if the node update has already been executed
+
+		// Ensure Labels map is initialised before any read or write.
+		if item.Labels == nil {
+			item.Labels = make(map[string]string)
+		}
+		if item.Annotations == nil {
+			item.Annotations = make(map[string]string)
+		}
+
 		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
-			//node update not initialized yet
+			// Node update not initialized yet; mark it and return – only one at a time.
 			log.Info("initializing update process for " + item.Name)
-			if item.Labels == nil {
-				item.Labels = make(map[string]string)
-			}
 			item.Labels["updatemanager.onesi.de/execution"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
 			item.Labels["updatemanager.onesi.de/state"] = "initialized"
-			if item.Annotations == nil {
-				item.Annotations = make(map[string]string)
-			}
 			item.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
 			delete(item.Annotations, "updatemanager.onesi.de/reboot")
 
@@ -185,52 +191,48 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 				return false, err
 			}
 			return false, nil
-		} else {
-			if completed, cmp := item.Labels["updatemanager.onesi.de/completed"]; cmp {
-				if completed == strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
-					continue
-				}
-			}
-			if label, ok := item.Labels["updatemanager.onesi.de/state"]; ok {
-				switch label {
-				case "Failed":
-					log.Info("Something went wrong during node update")
-					update.Spec.Update.Disabled = true
-					if err := r.Update(ctx, update); err != nil {
-						log.Info("failed to disable update scheduling")
-					}
-					err := errors.New("error during node update")
-					return false, err
-				case "Succeeded":
-					if value, trigger := item.Annotations["updatemanager.onesi.de/reboot"]; trigger {
-						if value == "done" {
-							log.Info(item.Name + " has been restarted")
-							item.Labels["updatemanager.onesi.de/completed"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
-							delete(item.Annotations, "updatemanager.onesi.de/reboot")
-							if err := r.Update(ctx, &item); err != nil {
-								log.Error(err, "failed to remove reboot annotation")
-								return false, nil
-							}
-							continue
-						} else {
-							log.Info(item.Name + " reboot is scheduled, but not jet done. waiting for completion")
-							return false, nil
-						}
-					} else {
-						log.Info("reboot not jet scheduled, wait")
-						return false, nil
-					}
-				default:
-					log.Info("update not finished yet on index " + strconv.Itoa(index+1))
-					return false, nil
-				}
-			} else {
-				log.Info("state label not found")
-				return false, nil
-			}
-
 		}
 
+		// Node already initialized for this execution cycle.
+		if completed := item.Labels["updatemanager.onesi.de/completed"]; completed == strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
+			continue
+		}
+
+		label, hasState := item.Labels["updatemanager.onesi.de/state"]
+		if !hasState {
+			log.Info("state label not found")
+			return false, nil
+		}
+
+		switch label {
+		case "Failed":
+			log.Info("Something went wrong during node update on " + item.Name)
+			// Mark the node update as failed without disabling the entire cluster update.
+			return false, errors.New("node update failed for " + item.Name)
+
+		case "Succeeded":
+			rebootVal, hasReboot := item.Annotations["updatemanager.onesi.de/reboot"]
+			if !hasReboot {
+				log.Info("reboot not yet scheduled, wait")
+				return false, nil
+			}
+			if rebootVal != "done" {
+				log.Info(item.Name + " reboot is scheduled, but not yet done. waiting for completion")
+				return false, nil
+			}
+			log.Info(item.Name + " has been restarted")
+			item.Labels["updatemanager.onesi.de/completed"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
+			delete(item.Annotations, "updatemanager.onesi.de/reboot")
+			if err := r.Update(ctx, &item); err != nil {
+				log.Error(err, "failed to remove reboot annotation")
+				return false, err
+			}
+			continue
+
+		default:
+			log.Info("update not finished yet on index " + strconv.Itoa(index+1))
+			return false, nil
+		}
 	}
 	return true, nil
 }

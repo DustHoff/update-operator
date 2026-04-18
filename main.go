@@ -29,8 +29,10 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	updatemanagerv1alpha1 "github.com/DustHoff/update-operator/api/v1alpha1"
 	"github.com/DustHoff/update-operator/controllers"
@@ -58,29 +60,40 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+
+	// Development mode is controlled via LOG_DEVELOPMENT env var; defaults to false for production.
+	development := os.Getenv("LOG_DEVELOPMENT") == "true"
 	opts := zap.Options{
-		Development: true,
+		Development: development,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	watchNamespace, err := getWatchNamespace()
-	if err != nil {
-		setupLog.Error(err, "unable to get WatchNamespace, "+
-			"the manager will watch and manage resources in all namespaces")
-	}
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
-		Port:                   9443,
+	watchNamespace, err := getWatchNamespace()
+	if err != nil {
+		setupLog.Info("WATCH_NAMESPACE not set, manager will watch all namespaces")
+	}
+
+	managerOptions := ctrl.Options{
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: metricsAddr,
+		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "1282d100.onesi.de",
-		Namespace:              watchNamespace,
-	})
+	}
+	if watchNamespace != "" {
+		managerOptions.Cache = cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				watchNamespace: {},
+			},
+		}
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), managerOptions)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
@@ -135,8 +148,7 @@ func main() {
 }
 
 func getWatchNamespace() (string, error) {
-	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
-
+	const watchNamespaceEnvVar = "WATCH_NAMESPACE"
 	ns, found := os.LookupEnv(watchNamespaceEnvVar)
 	if !found {
 		return "", fmt.Errorf("%s must be set", watchNamespaceEnvVar)
