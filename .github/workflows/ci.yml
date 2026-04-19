@@ -26,10 +26,15 @@ jobs:
         run: go test ./... -v
 
   manifests:
-    name: Verify generated manifests
+    name: Regenerate manifests
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Use the head ref so we can push back to the PR branch
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - uses: actions/setup-go@v5
         with:
@@ -39,12 +44,14 @@ jobs:
       - name: Generate CRDs and DeepCopy code
         run: make manifests generate
 
-      - name: Fail if generated files are out of date
+      - name: Commit regenerated files if changed
         run: |
           if ! git diff --quiet; then
-            echo "ERROR: Generated files are not up to date."
-            echo "Run 'make manifests generate' locally and commit the result."
-            echo ""
-            git diff
-            exit 1
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add config/crd/bases/ config/rbac/ api/v1alpha1/zz_generated.deepcopy.go
+            git commit -m "chore: regenerate manifests and deepcopy code [skip ci]"
+            git push
+          else
+            echo "Generated files are already up to date."
           fi
