@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: update
+---
+apiVersion: updatemanager.onesi.de/v1alpha1
+kind: ClusterUpdate
+metadata:
+  name: default
+  namespace: update
+spec:
+  update:
+    disabled: false
+    # Cron expression: every Sunday at 02:00
+    schedule: "0 2 * * 0"
+    # Number of nodes that may be updated simultaneously.
+    # 0 or omitted is treated as 1 (strictly sequential).
+    maxUnavailableNode: 1
+---
+# One NodeUpdate resource per node – name must match the Kubernetes node name.
+# Run `kubectl get nodes` to list your node names.
+apiVersion: updatemanager.onesi.de/v1alpha1
+kind: NodeUpdate
+metadata:
+  name: node-1   # replace with actual node name
+  namespace: update
+spec:
+  # OS-specific patch image that ships local apt repository lists.
+  image: "ghcr.io/dusthoff/ubuntu-patch-22-04:latest"
+  # Update order: lower priority = updated first.
+  priority: 1
+  packages:
+    # Packages to explicitly install/upgrade (leave empty for full dist-upgrade).
+    install: []
+    # Packages that must NOT be upgraded.
+    hold:
+      - kubeadm
+      - kubectl
+      - kubelet
+      - kubernetes-cni
