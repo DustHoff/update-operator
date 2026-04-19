@@ -6,6 +6,7 @@ on:
       - main
       - "feat/**"
       - "fix/**"
+      - "docs/**"
   pull_request:
     branches:
       - main
@@ -47,12 +48,18 @@ jobs:
       - name: Generate CRDs and DeepCopy code
         run: make manifests generate
 
+      - name: Sync plain deploy CRDs from generated bases
+        run: |
+          cat config/crd/bases/updatemanager.onesi.de_clusterupdates.yaml \
+              config/crd/bases/updatemanager.onesi.de_nodeupdates.yaml \
+              > deploy/plain/crds.yaml
+
       - name: Commit regenerated files if changed
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add config/crd/bases/ config/rbac/ api/v1alpha1/zz_generated.deepcopy.go
+            git add config/crd/bases/ config/rbac/ api/v1alpha1/zz_generated.deepcopy.go deploy/plain/crds.yaml
             git commit -m "chore: regenerate manifests and deepcopy code [skip ci]"
             git push
           else

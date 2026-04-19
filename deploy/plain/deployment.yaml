@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: update-operator-controller-manager
+  namespace: update-operator-system
+  labels:
+    control-plane: controller-manager
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: update-operator-controller-manager
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: manager
+        image: ghcr.io/dusthoff/update-operator:latest
+        command:
+        - /manager
+        args:
+        - --leader-elect
+        # Set WATCH_NAMESPACE to restrict the operator to a single namespace.
+        # Remove this env var (or leave it empty) to watch all namespaces.
+        # env:
+        # - name: WATCH_NAMESPACE
+        #   value: "my-namespace"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi

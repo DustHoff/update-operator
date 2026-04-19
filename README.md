@@ -1,80 +1,175 @@
-# updatecontroller
-// TODO(user): Add simple overview of use/purpose
+# Update Operator
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes operator that automates OS-level updates (apt) on cluster nodes in a controlled, rolling fashion.
 
-## Getting Started
-You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
-**Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
+## How it works
 
-### Running on the cluster
-1. Install Instances of Custom Resources:
+The operator uses two custom resources:
 
-```sh
-kubectl apply -f config/samples/
+- **ClusterUpdate** – defines the update schedule and controls how many nodes may be updated simultaneously (`maxUnavailableNode`).
+- **NodeUpdate** – one resource per node, defines which patch image to use, the update order (`priority`), and which packages to hold back or install.
+
+When a scheduled update cycle starts, the `ClusterUpdateController` picks the next batch of nodes (respecting `maxUnavailableNode`) and marks the corresponding `NodeUpdate` resources to trigger an update.  
+The `NodeUpdateController` then creates an update pod on the respective node. The pod copies apt repository lists from the container image onto the host (via `nsenter`) and runs `apt-get upgrade`. After the pod succeeds, the node is rebooted. Once it comes back, the next batch begins.
+
+```
+ClusterUpdate (schedule, maxUnavailableNode)
+      │
+      ├─► NodeUpdate (node-1, priority 1)  ──► update pod ──► reboot
+      ├─► NodeUpdate (node-2, priority 2)  ──► update pod ──► reboot
+      └─► ...
 ```
 
-2. Build and push your image to the location specified by `IMG`:
+## Custom Resources
 
-```sh
-make docker-build docker-push IMG=<some-registry>/updatecontroller:tag
+### ClusterUpdate
+
+```yaml
+apiVersion: updatemanager.onesi.de/v1alpha1
+kind: ClusterUpdate
+metadata:
+  name: default
+  namespace: update
+spec:
+  update:
+    disabled: false          # set to true to pause all updates
+    schedule: "0 2 * * 0"   # cron: every Sunday at 02:00
+    maxUnavailableNode: 1    # how many nodes update in parallel (default: 1)
 ```
 
-3. Deploy the controller to the cluster with the image specified by `IMG`:
+### NodeUpdate
 
-```sh
-make deploy IMG=<some-registry>/updatecontroller:tag
+```yaml
+apiVersion: updatemanager.onesi.de/v1alpha1
+kind: NodeUpdate
+metadata:
+  name: <node-name>          # must match the Kubernetes node name
+  namespace: update
+spec:
+  image: "ghcr.io/dusthoff/ubuntu-patch-22-04:latest"
+  priority: 1                # lower = updated first
+  packages:
+    install: []              # explicit packages to install (empty = full dist-upgrade)
+    hold:
+      - kubeadm
+      - kubectl
+      - kubelet
+      - kubernetes-cni
 ```
 
-### Uninstall CRDs
-To delete the CRDs from the cluster:
+## Deploy
+
+### Without OLM (plain kubectl)
+
+This method works on any Kubernetes cluster without any additional tooling.
+
+**1. Install CRDs**
 
 ```sh
-make uninstall
+kubectl apply -f deploy/plain/crds.yaml
 ```
 
-### Undeploy controller
-UnDeploy the controller from the cluster:
+**2. Create the operator namespace and RBAC**
 
 ```sh
-make undeploy
+kubectl apply -f deploy/plain/namespace.yaml
+kubectl apply -f deploy/plain/rbac.yaml
 ```
 
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-### How it works
-This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
-
-It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controller/),
-which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the cluster.
-
-### Test It Out
-1. Install the CRDs into the cluster:
+**3. Deploy the controller**
 
 ```sh
+kubectl apply -f deploy/plain/deployment.yaml
+```
+
+Verify the controller is running:
+
+```sh
+kubectl -n update-operator-system get pods
+```
+
+**4. Create a ClusterUpdate and NodeUpdate resources**
+
+Edit `deploy/plain/clusterupdate-sample.yaml` to match your node names (run `kubectl get nodes`), then apply:
+
+```sh
+kubectl apply -f deploy/plain/clusterupdate-sample.yaml
+```
+
+**Namespace scope**
+
+By default the controller watches all namespaces. To restrict it to a single namespace, uncomment and set the `WATCH_NAMESPACE` environment variable in `deploy/plain/deployment.yaml`:
+
+```yaml
+env:
+- name: WATCH_NAMESPACE
+  value: "update"
+```
+
+**Uninstall**
+
+```sh
+kubectl delete -f deploy/plain/clusterupdate-sample.yaml
+kubectl delete -f deploy/plain/deployment.yaml
+kubectl delete -f deploy/plain/rbac.yaml
+kubectl delete -f deploy/plain/namespace.yaml
+kubectl delete -f deploy/plain/crds.yaml
+```
+
+### With OLM
+
+Requires the [Operator Lifecycle Manager](https://olm.operatorframework.io/) to be installed on the cluster.
+
+```sh
+kubectl apply -f deploy/olm/namespace.yaml
+kubectl apply -f deploy/olm/catalogsource.yaml
+kubectl apply -f deploy/olm/subscription.yaml
+```
+
+The OLM subscription will automatically install and manage the operator.  
+After a successful install, create a `ClusterUpdate` resource:
+
+```sh
+kubectl apply -f deploy/olm/clusterupdate.yaml
+```
+
+## Development
+
+### Prerequisites
+
+- Go 1.21+
+- [controller-gen](https://github.com/kubernetes-sigs/controller-tools) (installed automatically via `make`)
+- A Kubernetes cluster (e.g. [kind](https://kind.sigs.k8s.io/))
+
+### Run locally
+
+```sh
+# Install CRDs into the cluster
 make install
-```
 
-2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
-
-```sh
+# Run controller locally (uses current kubeconfig)
 make run
 ```
 
-**NOTE:** You can also run this in one step by running: `make install run`
+### Regenerate manifests
 
-### Modifying the API definitions
-If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
+After modifying API types, regenerate CRDs and deepcopy code:
 
 ```sh
-make manifests
+make manifests generate
 ```
 
-**NOTE:** Run `make --help` for more information on all potential `make` targets
+### Run tests
 
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+```sh
+go test ./...
+```
+
+### Build and push image
+
+```sh
+make docker-build docker-push IMG=<registry>/update-operator:<tag>
+```
 
 ## License
 
@@ -91,4 +186,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
