@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./... -v
+
+  manifests:
+    name: Regenerate manifests
+    # Only run on push events to avoid a race condition when both the push and
+    # pull_request triggers fire simultaneously for the same commit.  The bot
+    # commit carries [skip ci] so it does not trigger a new run.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate CRDs and DeepCopy code
+        run: make manifests generate
+
+      - name: Commit regenerated files if changed
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add config/crd/bases/ config/rbac/ api/v1alpha1/zz_generated.deepcopy.go
+            git commit -m "chore: regenerate manifests and deepcopy code [skip ci]"
+            git push
+          else
+            echo "Generated files are already up to date."
+          fi

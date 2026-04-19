@@ -34,6 +34,8 @@ import (
 )
 
 // NodeReconciler reconciles a Node object and maintains a corresponding NodeUpdate resource.
+// It also monitors node readiness after a reboot and marks the update cycle as done once
+// the node has been stable for at least 5 minutes.
 type NodeReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
@@ -55,6 +57,7 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		log.Error(err, "Failed to get node")
 		return ctrl.Result{}, err
 	}
+
 	found := &v1alpha1.NodeUpdate{}
 	err = n.Get(ctx, types.NamespacedName{Name: node.Name, Namespace: n.Namespace}, found)
 	if err != nil && apierrors.IsNotFound(err) {
@@ -67,7 +70,6 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			log.Error(err, "Failed to create NodeUpdate resource")
 			return ctrl.Result{}, err
 		}
-
 		if err = n.Get(ctx, types.NamespacedName{Name: node.Name, Namespace: n.Namespace}, found); err != nil {
 			log.Error(err, "Failed to fetch nodeUpdate resource")
 			return ctrl.Result{}, err
@@ -91,7 +93,7 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 	}
 
-	if _, trigger := found.Annotations["updatemanager.onesi.de/reboot"]; trigger && node.Spec.Unschedulable {
+	if _, trigger := found.Annotations[AnnotationReboot]; trigger && node.Spec.Unschedulable {
 		log.Info("found node with scheduled reboot " + found.Name)
 		ready, condition := helper.KubletReadyCondition(node.Status.Conditions)
 		if condition == nil {
@@ -103,10 +105,9 @@ func (n *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				return ctrl.Result{}, err
 			}
 		} else {
-			if value, ok := node.Annotations["updatemanager.onesi.de/reboot"]; ok {
+			if value, ok := node.Annotations[AnnotationReboot]; ok {
 				nsec, err := strconv.ParseInt(value, 10, 64)
 				if err != nil {
-					// Annotation value is corrupt; skip rather than treating it as epoch time.
 					log.Error(err, "invalid reboot timestamp annotation, skipping", "value", value)
 					return ctrl.Result{}, nil
 				}
@@ -140,11 +141,13 @@ func (n *NodeReconciler) generateNodeUpdate(node *v1.Node) (*v1alpha1.NodeUpdate
 	return nodeUpdate, nil
 }
 
+// removeTaints makes the node schedulable again and marks the NodeUpdate with reboot=done
+// so that ClusterUpdateController can advance to the next node.
 func (n *NodeReconciler) removeTaints(ctx context.Context, node *v1.Node, found *v1alpha1.NodeUpdate) error {
 	node.Spec.Unschedulable = false
 	node.Spec.Taints = nil
 	if node.Annotations != nil {
-		delete(node.Annotations, "updatemanager.onesi.de/reboot")
+		delete(node.Annotations, AnnotationReboot)
 	}
 
 	if found.Labels == nil {
@@ -153,8 +156,8 @@ func (n *NodeReconciler) removeTaints(ctx context.Context, node *v1.Node, found 
 	if found.Annotations == nil {
 		found.Annotations = make(map[string]string)
 	}
-	found.Labels["updatemanager.onesi.de/state"] = "Succeeded"
-	found.Annotations["updatemanager.onesi.de/reboot"] = "done"
+	found.Labels[LabelState] = StateSucceeded
+	found.Annotations[AnnotationReboot] = RebootDone
 
 	if err := n.Update(ctx, found); err != nil {
 		return err

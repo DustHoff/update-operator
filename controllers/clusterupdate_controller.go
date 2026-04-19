@@ -41,7 +41,8 @@ const (
 	typeDegraded  = "Degraded"
 )
 
-// ClusterUpdateReconciler reconciles a ClusterUpdate object
+// ClusterUpdateReconciler reconciles a ClusterUpdate object and orchestrates node updates
+// across the cluster respecting the MaxUnavailableNode setting.
 type ClusterUpdateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -50,8 +51,6 @@ type ClusterUpdateReconciler struct {
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=updatemanager.onesi.de,resources=clusterupdates/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=pods/status,verbs=get;update;patch
 
 func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -77,6 +76,7 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		return ctrl.Result{}, nil
 	}
+
 	if clusterUpdate.Spec.Update.Schedule == "" {
 		log.Info("missing schedule definition")
 		meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeDegraded, Status: metav1.ConditionTrue, Reason: "Reconciling", Message: "missing node update schedule"})
@@ -87,7 +87,6 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
-	// Validate cron expression before using it to avoid a panic from MustParse.
 	cronExpr, err := cronexpr.Parse(clusterUpdate.Spec.Update.Schedule)
 	if err != nil {
 		log.Error(err, "Invalid cron expression", "schedule", clusterUpdate.Spec.Update.Schedule)
@@ -113,7 +112,6 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	}
 
-	// Capture time.Now() once to avoid a race between two calls in the same condition.
 	now := time.Now().Round(time.Minute)
 	nextUpdate := time.UnixMilli(clusterUpdate.Status.NextNodeUpdate)
 	if now.Equal(nextUpdate) || now.After(nextUpdate) {
@@ -138,7 +136,7 @@ func (r *ClusterUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 		if finished {
 			nextTime := cronExpr.Next(time.Now())
-			log.Info("evaluated next run is " + nextTime.String())
+			log.Info("all nodes updated, next run is " + nextTime.String())
 			clusterUpdate.Status.NextNodeUpdate = nextTime.Round(time.Minute).UnixMilli()
 			meta.SetStatusCondition(&clusterUpdate.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionTrue, Reason: "nextExecution", Message: "next node update execution is " + nextTime.String()})
 			if err = r.Status().Update(ctx, clusterUpdate); err != nil {
@@ -157,20 +155,30 @@ func (r *ClusterUpdateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+// executeNodeUpdateFlow orchestrates node updates respecting the MaxUnavailableNode limit.
+// It initialises up to MaxUnavailableNode nodes simultaneously (default 1) and returns true
+// when every node has completed the current update cycle.
 func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, list *updatemanagerv1alpha1.NodeUpdateList, update *updatemanagerv1alpha1.ClusterUpdate) (bool, error) {
 	log := log.FromContext(ctx)
+
 	for _, item := range list.Items {
 		if item.Spec.Priority < 1 {
-			return false, errors.New("Unsupported Priority for node " + item.Name + ". lowest node priority is 1")
+			return false, errors.New("unsupported priority for node " + item.Name + "; lowest allowed priority is 1")
 		}
 	}
 
 	sort.Sort(list)
 
-	for index, item := range list.Items {
-		log.Info(item.Name + " identified as " + strconv.Itoa(index+1) + " element")
+	maxUnavailable := update.Spec.Update.MaxUnavailableNode
+	if maxUnavailable < 1 {
+		maxUnavailable = 1
+	}
 
-		// Ensure Labels map is initialised before any read or write.
+	executionID := strconv.FormatInt(update.Status.NextNodeUpdate, 10)
+
+	// First pass: transition completed nodes and detect failures.
+	for i := range list.Items {
+		item := &list.Items[i]
 		if item.Labels == nil {
 			item.Labels = make(map[string]string)
 		}
@@ -178,61 +186,79 @@ func (r *ClusterUpdateReconciler) executeNodeUpdateFlow(ctx context.Context, lis
 			item.Annotations = make(map[string]string)
 		}
 
-		if item.Labels["updatemanager.onesi.de/execution"] != strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
-			// Node update not initialized yet; mark it and return – only one at a time.
-			log.Info("initializing update process for " + item.Name)
-			item.Labels["updatemanager.onesi.de/execution"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
-			item.Labels["updatemanager.onesi.de/state"] = "initialized"
-			item.Annotations["updatemanager.onesi.de/execute"] = "nodeUpdate"
-			delete(item.Annotations, "updatemanager.onesi.de/reboot")
-
-			if err := r.Update(ctx, &item); err != nil {
-				log.Error(err, "failed to label and annotate node update")
-				return false, err
-			}
-			return false, nil
+		if item.Labels[LabelCompleted] == executionID {
+			continue
 		}
-
-		// Node already initialized for this execution cycle.
-		if completed := item.Labels["updatemanager.onesi.de/completed"]; completed == strconv.FormatInt(update.Status.NextNodeUpdate, 10) {
+		if item.Labels[LabelExecution] != executionID {
 			continue
 		}
 
-		label, hasState := item.Labels["updatemanager.onesi.de/state"]
-		if !hasState {
-			log.Info("state label not found")
-			return false, nil
-		}
-
-		switch label {
-		case "Failed":
-			log.Info("Something went wrong during node update on " + item.Name)
-			// Mark the node update as failed without disabling the entire cluster update.
+		switch item.Labels[LabelState] {
+		case StateFailed:
 			return false, errors.New("node update failed for " + item.Name)
-
-		case "Succeeded":
-			rebootVal, hasReboot := item.Annotations["updatemanager.onesi.de/reboot"]
-			if !hasReboot {
-				log.Info("reboot not yet scheduled, wait")
-				return false, nil
+		case StateSucceeded:
+			if item.Annotations[AnnotationReboot] == RebootDone {
+				log.Info(item.Name + " reboot completed, marking cycle as done")
+				item.Labels[LabelCompleted] = executionID
+				delete(item.Annotations, AnnotationReboot)
+				if err := r.Update(ctx, item); err != nil {
+					log.Error(err, "failed to mark node update as completed", "node", item.Name)
+					return false, err
+				}
 			}
-			if rebootVal != "done" {
-				log.Info(item.Name + " reboot is scheduled, but not yet done. waiting for completion")
-				return false, nil
-			}
-			log.Info(item.Name + " has been restarted")
-			item.Labels["updatemanager.onesi.de/completed"] = strconv.FormatInt(update.Status.NextNodeUpdate, 10)
-			delete(item.Annotations, "updatemanager.onesi.de/reboot")
-			if err := r.Update(ctx, &item); err != nil {
-				log.Error(err, "failed to remove reboot annotation")
-				return false, err
-			}
-			continue
-
-		default:
-			log.Info("update not finished yet on index " + strconv.Itoa(index+1))
-			return false, nil
 		}
 	}
-	return true, nil
+
+	// Count nodes that are currently in progress (initialized but not yet completed).
+	inProgress := int32(0)
+	allCompleted := true
+	for i := range list.Items {
+		item := &list.Items[i]
+		if item.Labels[LabelCompleted] == executionID {
+			continue
+		}
+		allCompleted = false
+		if item.Labels[LabelExecution] == executionID {
+			inProgress++
+		}
+	}
+
+	if allCompleted {
+		return true, nil
+	}
+
+	// Second pass: initialise additional nodes up to the MaxUnavailableNode limit.
+	for i := range list.Items {
+		if inProgress >= maxUnavailable {
+			break
+		}
+		item := &list.Items[i]
+
+		if item.Labels[LabelCompleted] == executionID {
+			continue
+		}
+		if item.Labels[LabelExecution] == executionID {
+			continue
+		}
+
+		log.Info("initializing update process for "+item.Name, "index", i+1, "inProgress", inProgress, "maxUnavailable", maxUnavailable)
+		if item.Labels == nil {
+			item.Labels = make(map[string]string)
+		}
+		if item.Annotations == nil {
+			item.Annotations = make(map[string]string)
+		}
+		item.Labels[LabelExecution] = executionID
+		item.Labels[LabelState] = StateInitialized
+		item.Annotations[AnnotationExecute] = TriggerNodeUpdate
+		delete(item.Annotations, AnnotationReboot)
+
+		if err := r.Update(ctx, item); err != nil {
+			log.Error(err, "failed to initialize node update", "node", item.Name)
+			return false, err
+		}
+		inProgress++
+	}
+
+	return false, nil
 }

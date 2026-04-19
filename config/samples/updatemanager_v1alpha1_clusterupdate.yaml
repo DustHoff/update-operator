@@ -9,4 +9,10 @@ metadata:
     app.kubernetes.io/created-by: updatecontroller
   name: clusterupdate-sample
 spec:
-  # TODO(user): Add fields here
+  update:
+    disabled: false
+    # Cron expression: every Sunday at 02:00
+    schedule: "0 2 * * 0"
+    # How many nodes may be updated simultaneously.
+    # Default (0 or omitted) is treated as 1 – strictly sequential.
+    maxUnavailableNode: 1
