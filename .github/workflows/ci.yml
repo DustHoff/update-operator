@@ -27,14 +27,17 @@ jobs:
 
   manifests:
     name: Regenerate manifests
+    # Only run on push events to avoid a race condition when both the push and
+    # pull_request triggers fire simultaneously for the same commit.  The bot
+    # commit carries [skip ci] so it does not trigger a new run.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          # Use the head ref so we can push back to the PR branch
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-go@v5
         with:
