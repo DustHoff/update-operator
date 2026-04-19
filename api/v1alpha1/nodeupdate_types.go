@@ -76,10 +76,10 @@ func (n *NodeUpdateList) Swap(i, j int) {
 }
 
 type NodeUpdatePackages struct {
-	// Defines which package get updated.
-	// If not set, all packages get updated
-	Install []string `json:"packages,omitempty"`
-	// Defines which packages get hold back during update process
+	// Defines which packages get installed/upgraded.
+	// If not set, a full dist-upgrade is performed.
+	Install []string `json:"install,omitempty"`
+	// Defines which packages are held back and not upgraded during the update process.
 	Hold []string `json:"hold,omitempty"`
 }
 

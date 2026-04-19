@@ -9,4 +9,17 @@ metadata:
     app.kubernetes.io/created-by: updatecontroller
   name: nodeupdate-sample
 spec:
-  # TODO(user): Add fields here
+  # OS-specific patch image that ships local apt repository lists.
+  # The image copies repo lists to the host and runs apt upgrade via nsenter.
+  image: "ghcr.io/dusthoff/update-operator/ubuntu-22-04-patch:latest"
+  # Lower number = updated first when multiple nodes share a cycle.
+  priority: 1
+  packages:
+    # Packages to explicitly install or upgrade (leave empty for full dist-upgrade).
+    install: []
+    # Packages that must NOT be upgraded (e.g. Kubernetes components).
+    hold:
+      - kubeadm
+      - kubectl
+      - kubelet
+      - kubernetes-cni
