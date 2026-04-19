@@ -53,9 +53,9 @@ type NodeUpdate struct {
 	Status NodeUpdateStatus `json:"status,omitempty"`
 }
 
-// +kubebuilder:object:root=true
 var _ sort.Interface = &NodeUpdateList{}
 
+//+kubebuilder:object:root=true
 // NodeUpdateList contains a list of NodeUpdate
 type NodeUpdateList struct {
 	metav1.TypeMeta `json:",inline"`
