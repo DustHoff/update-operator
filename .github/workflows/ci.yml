@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./... -v
+
+  manifests:
+    name: Verify generated manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate CRDs and DeepCopy code
+        run: make manifests generate
+
+      - name: Fail if generated files are out of date
+        run: |
+          if ! git diff --quiet; then
+            echo "ERROR: Generated files are not up to date."
+            echo "Run 'make manifests generate' locally and commit the result."
+            echo ""
+            git diff
+            exit 1
+          fi
